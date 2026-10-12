@@ -1,7 +1,7 @@
     ; Luke Groesbeck
     ; RCET3373
-    ; Timers
-    ; https://github.com/groeluke/LAB_7_ADC/tree/main/LAB_7_Part_1_ADC.X
+    ; UART
+    ; https://github.com/groeluke/Lab_8_UART/tree/main/LAB_8_Part_1_UART.X
     ; Linker code = -Wl,-presetVect=0000h,-pisrVect=0004h,-pcode=0008h
     
 ; PIC16F883 Configuration Bit Settings
@@ -26,6 +26,7 @@
 
 ; config statements should precede project file includes.
 #include <xc.inc>
+  DelayCount  EQU 0x70  ;countdown used inside the delay between UART message
   
 ; Reset Vector at 0000h. Execution starts here after reset.
 PSECT resetVect,class=CODE,delta=2
@@ -40,59 +41,29 @@ InterruptVector:
 PSECT code,class=CODE,delta=2
  
 Setup: 
-    ;          Bank 1
-    BANKSEL TRISA
-    BSF     TRISA,0     ;Set RA0 as input for pot 
-    BCF     TRISA,1     ;Set RA1 as output for diagnostic bit
-    CLRF    TRISB       ;Set PortB as outputs
-    CLRF    TRISC       ;Set PortC as outputs
-    BSF     ADCON1,7    ;Right justified
-    BCF     ADCON1,4    ;Voltage Reference bit for VDD
-    BCF     ADCON1,5    ;Voltage Reference bit for VSS
-    CLRF    ADRESL      ;Clear low register data
     ;          Bank 3
-    BANKSEL ANSEL
-    BSF     ANSEL,0     ;Set RA0 as an Analog input
+    BANKSEL ANSEL     
+    CLRF    ANSEL         ;set all pins to digital which doesn't do anything here.
     CLRF    ANSELH
+    CLRF    BAUDCTL       ;clear register for Baud Rate Control Resgister
+    ;          Bank 1
+    BANKSEL TXSTA 
+    MOVLW   0b00100100    ;turn transmitter on, and asynchronus on with high speed,
+    MOVWF   TXSTA         ; and 8 bit data
+    MOVLW   25
+    MOVWF   SPBRG
+    BSF     TRISC,6       ;set as asynchronous serial output
+    BSF     TRISC,7       ;set as asynchronous serial input
     ;          Bank 0
-    BANKSEL ADCON0
-    BCF     ADCON0,7    ;Clock Conversion selected bits Fosc/8
-    BSF     ADCON0,6    ;TAD = 2us
-    CLRF    ADRESH      ;clear high register data
-    CLRF    PORTB
-    CLRF    PORTC
-    BSF     ADCON0,0    ;Enable ADC bit
-
+    BANKSEL RCSTA
+    MOVLW   0b10000000    ;enable the serial port
+    MOVWF   RCSTA         ;configures RX/DT and TX/CK pins as serial port pins
 Main:
-    NOP
-    NOP
-    NOP
-    NOP
-    NOP                ;delay
-    ;       Start conversion
-    BANKSEL ADCON0
-    BSF     ADCON0,1   ;Set tue A/D conversion status bit high which is automatically
-                       ;cleared by hardware when the conversion has completed
-    BANKSEL PORTA
-    BSF     PORTA,1    ;Set RA1 high for diagnostic
-
-Check:
-    BANKSEL ADCON0
-    BTFSC   ADCON0,1   ;check to see if its still converting
-    GOTO    Check
-    BANKSEL PORTA
-    BCF     PORTA,1    ;Set RA1 low for diagnostic
-    ;       Run the Diagnostic LOW if convertion is complete
-    BANKSEL ADRESH
-    MOVF    ADRESH,W
-    BANKSEL PORTC
-    MOVWF   PORTC      ;upper 2 bits to PORTC
-
-    BANKSEL ADRESL
-    MOVF    ADRESL,W
-    BANKSEL PORTB
-    MOVWF   PORTB      ;lower 8 bits to PORTB
-
-    GOTO    Main
+    BTFSS   PIR1,4        ;check to see if the transmit register is empty
+    GOTO    $-1           ;if not keep waiting
+    MakeItRain:
+    MOVLW   0x24          ;send the "$"
+    MOVWF   TXREG         ;write the transmission
+    GOTO    Main          ;Re-run the program
     End
     
