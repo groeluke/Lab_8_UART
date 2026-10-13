@@ -137,7 +137,7 @@ ProcessEcho:
 ; ServiceTx: if a byte is waiting and TXREG is empty, send it.
 ServiceTx:
     BTFSS   tx_pending,0  ;is anything waiting to be sent?
-    RETURN                ;no
+    RETURN                ;if no then return
     BTFSS   PIR1,4        ;TXIF = 1 means TXREG is empty
     RETURN                ;transmitter busy, try again next pass
     MOVF    tx_byte,W

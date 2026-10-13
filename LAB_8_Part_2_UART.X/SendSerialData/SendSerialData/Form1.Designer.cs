@@ -1,4 +1,7 @@
-﻿namespace SendSerialData
+﻿using System.Xml.Linq;
+using static System.Net.Mime.MediaTypeNames;
+
+namespace SendSerialData
 {
     partial class Form1
     {
@@ -113,8 +116,8 @@
             // 
             // Form1
             // 
-            AutoScaleDimensions = new SizeF(10F, 25F);
-            AutoScaleMode = AutoScaleMode.Font;
+            this.AutoScaleDimensions = new System.Drawing.SizeF(10F, 25F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             ClientSize = new Size(800, 450);
             Controls.Add(SendButton);
             Controls.Add(ReadButton);
