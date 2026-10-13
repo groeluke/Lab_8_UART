@@ -33,7 +33,6 @@ namespace SerialExample
 
         void SerialSend()
         {
-            OutputTextBox.Text = "$";
             _serialPort.Write(OutputTextBox.Text);
         }
 
