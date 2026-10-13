@@ -82,14 +82,14 @@ Setup:
     BANKSEL ANSEL     
     CLRF    ANSEL         ;set all pins digital, RA0 needs this as an output
     CLRF    ANSELH
-    CLRF    BAUDCTL       ;BRG16 = 0, the 8-bit baud rate generator
+    CLRF    BAUDCTL       ;set the 8-bit baud rate generator
     ;       Bank 1
     BANKSEL TXSTA 
     MOVLW   0b00100100    ;transmitter on, asynchronous, high speed,
     MOVWF   TXSTA         ;and 8 bit data
     MOVLW   25
     MOVWF   SPBRG         ;9600 baud divisor, 9615 actual at 4 MHz
-    BSF     TRISC,6       ;bit set as the data sheet says for the TX pin
+    BCF     TRISC,6       ;bit set as the data sheet says for the TX pin
     BSF     TRISC,7       ;bit set as the data sheet says for the RX pin
     BCF     TRISA,0       ;RA0 is an output, the diagnostic pin
     ;       Bank 0
@@ -107,6 +107,7 @@ Main:
 ; ServiceRx: the pulse on RA0 marks every receive check. Then, only
 ; if the last byte was handled and a new one arrived, read it.
 ServiceRx:
+    BANKSEL PORTA
     BSF     PORTA,0       ;diagnostic pulse HIGH
     BCF     PORTA,0       ;and LOW on the very next instruction
     BTFSC   rx_ready,0    ;is the last byte still waiting to be handled?

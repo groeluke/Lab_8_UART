@@ -52,7 +52,7 @@ Setup:
     MOVWF   TXSTA         ; and 8 bit data
     MOVLW   25
     MOVWF   SPBRG
-    BSF     TRISC,6       ;set as asynchronous serial output
+    BCF     TRISC,6       ;set as asynchronous serial output
     BSF     TRISC,7       ;set as asynchronous serial input
     ;          Bank 0
     BANKSEL RCSTA
