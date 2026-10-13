@@ -36,7 +36,7 @@
             ConnectButton = new Button();
             ReadButton = new Button();
             SendButton = new Button();
-            SuspendLayout();
+            //SuspendLayout();
             // 
             // PortsComboBox
             // 
