@@ -36,10 +36,10 @@
             PortsComboBox = new ComboBox();
             OutputTextBox = new TextBox();
             StatusStrip = new StatusStrip();
+            StatusLabel = new ToolStripStatusLabel();
             StatusTimer = new System.Windows.Forms.Timer(components);
             ComListBox = new ListBox();
             EnableTimerCheckBox = new CheckBox();
-            StatusLabel = new ToolStripStatusLabel();
             StatusStrip.SuspendLayout();
             SuspendLayout();
             // 
@@ -102,11 +102,16 @@
             // 
             StatusStrip.ImageScalingSize = new Size(24, 24);
             StatusStrip.Items.AddRange(new ToolStripItem[] { StatusLabel });
-            StatusStrip.Location = new Point(0, 422);
+            StatusStrip.Location = new Point(0, 428);
             StatusStrip.Name = "StatusStrip";
-            StatusStrip.Size = new Size(800, 28);
+            StatusStrip.Size = new Size(800, 22);
             StatusStrip.TabIndex = 6;
             StatusStrip.Text = "statusStrip1";
+            // 
+            // StatusLabel
+            // 
+            StatusLabel.Name = "StatusLabel";
+            StatusLabel.Size = new Size(0, 15);
             // 
             // StatusTimer
             // 
@@ -119,6 +124,7 @@
             ComListBox.Name = "ComListBox";
             ComListBox.Size = new Size(579, 304);
             ComListBox.TabIndex = 7;
+            //ComListBox.SelectedIndexChanged += ComListBox_SelectedIndexChanged;
             // 
             // EnableTimerCheckBox
             // 
@@ -129,11 +135,6 @@
             EnableTimerCheckBox.TabIndex = 8;
             EnableTimerCheckBox.Text = "Enable Timer";
             EnableTimerCheckBox.UseVisualStyleBackColor = true;
-            // 
-            // StatusLabel
-            // 
-            StatusLabel.Name = "StatusLabel";
-            StatusLabel.Size = new Size(0, 21);
             // 
             // SerialData
             // 
