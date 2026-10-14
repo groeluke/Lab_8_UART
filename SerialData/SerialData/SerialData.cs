@@ -2,11 +2,11 @@ using System.IO.Ports;
 using System.Xml.Serialization;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 
-namespace SerialExample
+namespace SerialData
 {
-    public partial class SerialForm : Form
+    public partial class SerialData : Form
     {
-        public SerialForm()
+        public SerialData()
         {
             InitializeComponent();
             UpdatePortSelection();
@@ -67,12 +67,6 @@ namespace SerialExample
                 PortsComboBox.SelectedIndex = 0; // Select the first port by default
             }
 
-        }
-
-        void TestQyAtBoard()
-        {
-            byte[] thingy = { 0xF0 };
-            _serialPort.Write(thingy, 0, 1);
         }
 
         void WriteToDigitalOutputs()
