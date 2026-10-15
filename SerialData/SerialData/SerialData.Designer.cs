@@ -43,6 +43,7 @@
             IDButton = new Button();
             OverrunButton = new Button();
             ADCButton = new Button();
+            FramingErrorButton = new Button();
             StatusStrip.SuspendLayout();
             SuspendLayout();
             // 
@@ -170,11 +171,22 @@
             ADCButton.UseVisualStyleBackColor = true;
             ADCButton.Click += ADCButton_Click;
             // 
+            // FramingErrorButton
+            // 
+            FramingErrorButton.Location = new Point(12, 262);
+            FramingErrorButton.Name = "FramingErrorButton";
+            FramingErrorButton.Size = new Size(112, 34);
+            FramingErrorButton.TabIndex = 12;
+            FramingErrorButton.Text = "Framing";
+            FramingErrorButton.UseVisualStyleBackColor = true;
+            FramingErrorButton.Click += FramingErrorButton_Click;
+            // 
             // SerialData
             // 
             AutoScaleDimensions = new SizeF(10F, 25F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(800, 450);
+            Controls.Add(FramingErrorButton);
             Controls.Add(ADCButton);
             Controls.Add(OverrunButton);
             Controls.Add(IDButton);
@@ -211,5 +223,6 @@
         private Button IDButton;
         private Button OverrunButton;
         private Button ADCButton;
+        private Button FramingErrorButton;
     }
 }

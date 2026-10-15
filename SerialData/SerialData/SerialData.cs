@@ -163,30 +163,32 @@ namespace SerialData
             StatusLabel.Text = $"Port: {portName} tx:{txWaiting} rx:{rxWaiting}";
         }
 
-        void ForceAnOverrunError()
+        void ForceAFramingError()
         {
-            // This is a test function to force an overrun error on the PIC
             if (_serialPort.IsOpen == false)
             {
                 MessageBox.Show("Connect first.");
                 return;
             }
 
-            // Create a long burst of bytes (just repeating $ characters)
-            byte[] flood = new byte[64];
-            for (int i = 0; i < flood.Length; i++)
-            {
-                flood[i] = 0x24;   // '$'
-            }
+            // Switch to wrong baud
+            _serialPort.BaudRate = 4800;
 
-            // Send the whole burst at once
-            _serialPort.Write(flood, 0, flood.Length);
+            // Send one byte
+            byte[] bad = { 0x00 };
+            _serialPort.Write(bad, 0, 1);
+            AddToList("TX", bad, 1, "Sent at 4800 to force FRAMING");
 
-            AddToList("TX", flood, 8, "Flooded 64 bytes → force OVERRUN");  // only show first 8 for the list
+            // Switch back immediately
+            _serialPort.BaudRate = 9600;
+
+            // Clear any garbage and wait
+            System.Threading.Thread.Sleep(20);
+            _serialPort.DiscardInBuffer();
+            rxCount = 0;
 
             waiting = true;
-            deadline = DateTime.Now.AddMilliseconds(800);
-            rxCount = 0;
+            deadline = DateTime.Now.AddMilliseconds(1000);
         }
 
         string[] GetSerialPorts()
@@ -237,12 +239,17 @@ namespace SerialData
 
         private void IDLabelButton_Click(object sender, EventArgs e)
         {
-            ForceAnOverrunError();
+            //ForceAnOverrunError();
         }
 
         private void IDButton_Click(object sender, EventArgs e)
         {
             SendBytes(new byte[] { 0x24, 0x49, 0x00 });          // Device ID request
+        }
+
+        private void FramingErrorButton_Click(object sender, EventArgs e)
+        {
+            ForceAFramingError();
         }
     }
 }

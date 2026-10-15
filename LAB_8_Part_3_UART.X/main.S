@@ -41,6 +41,8 @@ tx_data2        EQU 0x7B        ;Length
 tx_data3        EQU 0x7C        ;Data byte 0
 tx_data4        EQU 0x7D        ;Data byte 1
 tx_data5        EQU 0x7E        ;Data byte 2
+Count_5ms       EQU 0x20        ;overrun error stuff
+Count_50us      EQU 0x21        ;overrun error inner count
 	
 ;              Required Setup
 ;EUSART:
@@ -203,6 +205,9 @@ Main:
     CALL    ServiceRx     ;check the receiver
     CALL    ServiceReply  ;hand a received byte over to the send side
     CALL    ServiceTx     ;send it if the transmitter is free
+    
+; add a 5ms delay to casue over run 
+    CAll    Delay5ms
     GOTO    Main          ;repeat forever
 ;ServiceRx: Checks for receive errors first.  If a normal byte arrived, 
 ;hands it to the parser.  Returns immediately so the main loop can keep running.
@@ -483,6 +488,29 @@ ServiceTx:
     MOVF    INDF,W          ;read the byte that FSR is pointing at
     MOVWF   TXREG           ;writing to TXREG starts the transmission
     INCF    tx_count,F      ;one more byte has been queued
+    RETURN
+    
+Delay5ms:
+    MOVLW   0x5E
+    MOVWF   Count_5ms
+    
+Delay5ms_Loop:
+    Call    Delay50us_Loop
+    DECFSZ  Count_5ms
+    GOTO    Delay5ms_Loop
+    
+    MOVLW   0x04
+    MOVWF   Count_5ms
+
+    DECFSZ  Count_5ms
+    GOTO    $-1
+    RETURN
+Delay50us_Loop:
+    MOVLW 0x0F              ;1 Tcy move W=15 to count
+    MOVWF Count_50us         ;1 Tcy make count equal 15
+                            ;Delay loop is equals 44 Tcy when count is 15         
+    DECFSZ Count_50us,1     ;1 Tcy if not zero, 2 Tcy if zero
+    GOTO $-1                ;2 Tcy delay runs 15 times before skiping
     RETURN
 
     END
