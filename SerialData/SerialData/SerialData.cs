@@ -237,11 +237,6 @@ namespace SerialData
             SendBytes(new byte[] { 0x24, 0x41, 0x01, 0x00 });   // AN0 request
         }
 
-        private void IDLabelButton_Click(object sender, EventArgs e)
-        {
-            //ForceAnOverrunError();
-        }
-
         private void IDButton_Click(object sender, EventArgs e)
         {
             SendBytes(new byte[] { 0x24, 0x49, 0x00 });          // Device ID request

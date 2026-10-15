@@ -41,7 +41,6 @@
             ComListBox = new ListBox();
             EnableTimerCheckBox = new CheckBox();
             IDButton = new Button();
-            OverrunButton = new Button();
             ADCButton = new Button();
             FramingErrorButton = new Button();
             StatusStrip.SuspendLayout();
@@ -151,16 +150,6 @@
             IDButton.UseVisualStyleBackColor = true;
             IDButton.Click += IDButton_Click;
             // 
-            // OverrunButton
-            // 
-            OverrunButton.Location = new Point(12, 222);
-            OverrunButton.Name = "OverrunButton";
-            OverrunButton.Size = new Size(112, 34);
-            OverrunButton.TabIndex = 10;
-            OverrunButton.Text = "Overrun";
-            OverrunButton.UseVisualStyleBackColor = true;
-            OverrunButton.Click += IDLabelButton_Click;
-            // 
             // ADCButton
             // 
             ADCButton.Location = new Point(12, 335);
@@ -188,7 +177,6 @@
             ClientSize = new Size(800, 450);
             Controls.Add(FramingErrorButton);
             Controls.Add(ADCButton);
-            Controls.Add(OverrunButton);
             Controls.Add(IDButton);
             Controls.Add(EnableTimerCheckBox);
             Controls.Add(ComListBox);
@@ -221,7 +209,6 @@
         private CheckBox EnableTimerCheckBox;
         private ToolStripStatusLabel StatusLabel;
         private Button IDButton;
-        private Button OverrunButton;
         private Button ADCButton;
         private Button FramingErrorButton;
     }
