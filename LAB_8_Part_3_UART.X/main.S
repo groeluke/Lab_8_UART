@@ -207,7 +207,7 @@ Main:
     CALL    ServiceTx     ;send it if the transmitter is free
     
 ; add a 5ms delay to casue over run 
-    CAll    Delay5ms
+    ;CAll    Delay5ms
     GOTO    Main          ;repeat forever
 ;ServiceRx: Checks for receive errors first.  If a normal byte arrived, 
 ;hands it to the parser.  Returns immediately so the main loop can keep running.
@@ -370,7 +370,7 @@ ServiceReply:
     BTFSC   STATUS,2
     GOTO    BuildId
 
-;   Must be an ADC request ? keep working on the conversion until it finishes
+;   Must be an ADC request and keep working on the conversion until it finishes
     CALL    ServiceAdc
     MOVF    adc_state,W
     XORLW   2               ;is the result ready?
