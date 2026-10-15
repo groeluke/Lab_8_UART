@@ -38,23 +38,155 @@ namespace SerialData
             _serialPort.Open();
         }
 
-        void SerialSend()
+        // Send bytes to the PIC, then start waiting for a reply
+        void SendBytes(byte[] data)
         {
-            _serialPort.Write(OutputTextBox.Text);
+            if (_serialPort.IsOpen == false)
+            {
+                MessageBox.Show("Connect first.");
+                return;
+            }
+            if (waiting == true)
+            {
+                return;                               // still waiting on the last request
+            }
+
+            _serialPort.DiscardInBuffer();            // throw away old leftover bytes
+            rxCount = 0;                              // empty our receive buffer
+            _serialPort.Write(data, 0, data.Length);  // send the real byte values
+            AddToList("TX", data, data.Length, "");
+
+            waiting = true;
+            deadline = DateTime.Now.AddMilliseconds(500);   // wait up to 0.5 seconds
         }
 
-        void SerialRead()
+        // Turn the typed hex text (like "24 49 00") into bytes and send them
+        void SerialSend()
         {
-            //SerialTextBox.Text = _serialPort.ReadExisting();
-            byte[] RXJim = new byte[_serialPort.BytesToRead];
-            int byteNumber = 0;
-            _serialPort.Read(RXJim, 0, RXJim.Length);
-
-            foreach (byte b in RXJim)
+            string[] parts = OutputTextBox.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            byte[] data = new byte[parts.Length];
+            try
             {
-                byteNumber++;
-                ComListBox.Items.Add($"{byteNumber}: {b} : {b:X2} {(char)b}");
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    data[i] = Convert.ToByte(parts[i], 16);   // 16 = text is hexadecimal
+                }
             }
+            catch (Exception)
+            {
+                MessageBox.Show("Type hex like: 24 49 00");
+                return;
+            }
+            SendBytes(data);
+        }
+
+        // ---------- showing things in the list ----------
+
+        // Add a line: TX or RX, the bytes in hex, and a note
+        void AddToList(string direction, byte[] data, int count, string note)
+        {
+            string hex = "";
+            for (int i = 0; i < count; i++)
+            {
+                hex = hex + data[i].ToString("X2") + " ";   // each byte as 2 hex digits
+            }
+            ComListBox.Items.Add(direction + "  " + hex + " " + note);
+            ComListBox.TopIndex = ComListBox.Items.Count - 1;   // scroll to the newest line
+        }
+
+        // A full reply has arrived, so decode it
+        string Decode()
+        {
+            // ID reply: 24 49 02 33 75
+            if (rxBuffer[1] == 0x49)
+            {
+                int id = rxBuffer[3] * 256 + rxBuffer[4];   // high byte first
+                return "Device ID = 0x" + id.ToString("X4");
+            }
+            // ADC reply: 24 41 03 00 HH LL
+            if (rxBuffer[1] == 0x41)
+            {
+                int adc = rxBuffer[4] * 256 + rxBuffer[5];  // 10-bit value, 0 to 1023
+                ADCButton.Text = "ADC: " + adc;
+                return "ADC = " + adc;
+            }
+            // Error reply: 24 45 02 code 00
+            if (rxBuffer[1] == 0x45)
+            {
+                if (rxBuffer[3] == 1) return "FRAMING ERROR";
+                if (rxBuffer[3] == 2) return "OVERRUN ERROR";
+            }
+            return "Unknown reply";
+        }
+
+        // ---------- timer: runs every 20 ms, never blocks ----------
+        private void StatusTimer_Tick(object sender, EventArgs e)
+        {
+            string portName = "none";
+            int rxWaiting = 0;
+            int txWaiting = 0;
+
+            if (_serialPort.IsOpen)
+            {
+                // 1. Move any new bytes into rxBuffer
+                while (_serialPort.BytesToRead > 0 && rxCount < rxBuffer.Length)
+                {
+                    rxBuffer[rxCount] = (byte)_serialPort.ReadByte();
+                    rxCount++;
+                }
+
+                // 2. Is a whole packet here? Total length = 3 + the LENGTH byte (byte 2)
+                if (waiting == true && rxCount >= 3)
+                {
+                    int total = 3 + rxBuffer[2];
+                    if (rxCount >= total)
+                    {
+                        AddToList("RX", rxBuffer, total, Decode());
+                        rxCount = 0;
+                        waiting = false;
+                    }
+                }
+
+                // 3. Give up if we waited too long
+                if (waiting == true && DateTime.Now > deadline)
+                {
+                    ComListBox.Items.Add("TIMEOUT: no reply");
+                    ComListBox.TopIndex = ComListBox.Items.Count - 1;
+                    waiting = false;
+                }
+
+                portName = _serialPort.PortName;
+                rxWaiting = _serialPort.BytesToRead;
+                txWaiting = _serialPort.BytesToWrite;
+            }
+
+            StatusLabel.Text = $"Port: {portName} tx:{txWaiting} rx:{rxWaiting}";
+        }
+
+        void ForceAnOverrunError()
+        {
+            // This is a test function to force an overrun error on the PIC
+            if (_serialPort.IsOpen == false)
+            {
+                MessageBox.Show("Connect first.");
+                return;
+            }
+
+            // Create a long burst of bytes (just repeating $ characters)
+            byte[] flood = new byte[64];
+            for (int i = 0; i < flood.Length; i++)
+            {
+                flood[i] = 0x24;   // '$'
+            }
+
+            // Send the whole burst at once
+            _serialPort.Write(flood, 0, flood.Length);
+
+            AddToList("TX", flood, 8, "Flooded 64 bytes → force OVERRUN");  // only show first 8 for the list
+
+            waiting = true;
+            deadline = DateTime.Now.AddMilliseconds(800);
+            rxCount = 0;
         }
 
         string[] GetSerialPorts()
@@ -73,10 +205,9 @@ namespace SerialData
             {
                 PortsComboBox.SelectedIndex = 0; // Select the first port by default
             }
-
         }
 
-        // Event Handlers Below Here ---------------------------------------------
+        // Event Handlers Below Here *****************************************
         private void ExitButton_Click(object sender, EventArgs e)
         {
             this.Close();
@@ -90,47 +221,28 @@ namespace SerialData
 
         private void ReadButton_Click(object sender, EventArgs e)
         {
-            SerialRead();
-        }
-
-        private void StatusTimer_Tick(object sender, EventArgs e)
-        {
-            string portName;
-            int rxBuffer, txBuffer;
-            if (_serialPort.IsOpen)
-            {
-                portName = _serialPort.PortName;
-                rxBuffer = _serialPort.BytesToRead;
-                txBuffer = _serialPort.BytesToWrite;
-            }
-            else
-            {
-                portName = "none";
-                rxBuffer = 0;
-                txBuffer = 0;
-            }
-
-            StatusLabel.Text = $"Port: {portName} tx:{txBuffer} rx:{rxBuffer}";
+            // Same AN0 request as the Check ADC button
+            SendBytes(new byte[] { 0x24, 0x41, 0x01, 0x00 });
         }
 
         private void SendButton_Click(object sender, EventArgs e)
         {
-            SerialSend();
+            SerialSend();    // sends the hex typed in the text box
         }
 
         private void ADCButton_Click(object sender, EventArgs e)
         {
-
+            SendBytes(new byte[] { 0x24, 0x41, 0x01, 0x00 });   // AN0 request
         }
 
         private void IDLabelButton_Click(object sender, EventArgs e)
         {
-
+            ForceAnOverrunError();
         }
 
         private void IDButton_Click(object sender, EventArgs e)
         {
-
+            SendBytes(new byte[] { 0x24, 0x49, 0x00 });          // Device ID request
         }
     }
 }

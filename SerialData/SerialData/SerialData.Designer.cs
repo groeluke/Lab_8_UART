@@ -41,7 +41,7 @@
             ComListBox = new ListBox();
             EnableTimerCheckBox = new CheckBox();
             IDButton = new Button();
-            IDLabelButton = new Button();
+            OverrunButton = new Button();
             ADCButton = new Button();
             StatusStrip.SuspendLayout();
             SuspendLayout();
@@ -150,19 +150,19 @@
             IDButton.UseVisualStyleBackColor = true;
             IDButton.Click += IDButton_Click;
             // 
-            // IDLabelButton
+            // OverrunButton
             // 
-            IDLabelButton.Location = new Point(12, 335);
-            IDLabelButton.Name = "IDLabelButton";
-            IDLabelButton.Size = new Size(112, 34);
-            IDLabelButton.TabIndex = 10;
-            IDLabelButton.Text = "ID Label";
-            IDLabelButton.UseVisualStyleBackColor = true;
-            IDLabelButton.Click += IDLabelButton_Click;
+            OverrunButton.Location = new Point(12, 222);
+            OverrunButton.Name = "OverrunButton";
+            OverrunButton.Size = new Size(112, 34);
+            OverrunButton.TabIndex = 10;
+            OverrunButton.Text = "Overrun";
+            OverrunButton.UseVisualStyleBackColor = true;
+            OverrunButton.Click += IDLabelButton_Click;
             // 
             // ADCButton
             // 
-            ADCButton.Location = new Point(12, 295);
+            ADCButton.Location = new Point(12, 335);
             ADCButton.Name = "ADCButton";
             ADCButton.Size = new Size(112, 34);
             ADCButton.TabIndex = 11;
@@ -176,7 +176,7 @@
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(800, 450);
             Controls.Add(ADCButton);
-            Controls.Add(IDLabelButton);
+            Controls.Add(OverrunButton);
             Controls.Add(IDButton);
             Controls.Add(EnableTimerCheckBox);
             Controls.Add(ComListBox);
@@ -209,7 +209,7 @@
         private CheckBox EnableTimerCheckBox;
         private ToolStripStatusLabel StatusLabel;
         private Button IDButton;
-        private Button IDLabelButton;
+        private Button OverrunButton;
         private Button ADCButton;
     }
 }
