@@ -63,7 +63,6 @@ Count_50us      EQU 0x21        ;overrun error inner count
 ;call ServiceReply
 ;call ServiceTx
 ;repeat
-
 ;ServiceRx:
 ;if no received byte is waiting, return
 ;if receive overrun:
@@ -80,7 +79,6 @@ Count_50us      EQU 0x21        ;overrun error inner count
 ;if a receive-error reply is pending, return
 ;call ParseRxByte
 ;return
-
 ;ParseRxByte:
 ;WAIT_START:
 ;if byte is '$', advance rx_state to GET_COMMAND
@@ -107,7 +105,6 @@ Count_50us      EQU 0x21        ;overrun error inner count
 ;reply_pending = ADC
 ;set adc_state to IDLE
 ;return
-
 ;ServiceReply:
 ;if no reply is pending, return
 ;if TX packet has unsent bytes, return
@@ -126,7 +123,6 @@ Count_50us      EQU 0x21        ;overrun error inner count
 ;reset tx_count
 ;clear reply_pending
 ;return
-
 ;ServiceAdc:
 ;if adc_state is IDLE:
 ;start AN0 conversion
@@ -137,7 +133,6 @@ Count_50us      EQU 0x21        ;overrun error inner count
 ;save both ADC result bytes
 ;set adc_state to READY
 ;return
-
 ;ServiceTx:
 ;if tx_count = tx_length, return
 ;if TXREG cannot accept another byte, return
@@ -189,7 +184,6 @@ Setup:
     MOVWF   RCSTA
     MOVLW   0b01000001    ;ADC clock = Fosc/8, channel = AN0, ADC turned on
     MOVWF   ADCON0
-
     CLRF    PORTA         ;start with the diagnostic pin low
     CLRF    rx_state      ;parser begins looking for a '$'
     CLRF    rx_command
