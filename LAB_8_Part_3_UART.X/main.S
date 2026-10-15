@@ -56,90 +56,6 @@ Count_50us      EQU 0x21        ;overrun error inner count
 ;clear parser, reply, ADC, and TX state
 ;start with the diagnostic output LOW
   
-;              Program Structure
-;main:
-;pulse the diagnostic output to mark each receive-service check
-;call ServiceRx
-;call ServiceReply
-;call ServiceTx
-;repeat
-;ServiceRx:
-;if no received byte is waiting, return
-;if receive overrun:
-;reset receiver
-;reply_pending = overrun error
-;rx_state = WAIT_START
-;return
-;if framing error:
-;read and discard affected byte
-;reply_pending = framing error
-;rx_state = WAIT_START
-;return
-;read one byte into rx_byte
-;if a receive-error reply is pending, return
-;call ParseRxByte
-;return
-;ParseRxByte:
-;WAIT_START:
-;if byte is '$', advance rx_state to GET_COMMAND
-;return
-;GET_COMMAND:
-;if byte is 'I' or 'A':
-;save command; advance rx_state to GET_LENGTH
-;otherwise:
-;reset rx_state to WAIT_START
-;return
-;GET_LENGTH:
-;if command is 'I' and received length byte is 0:
-;reset rx_state to WAIT_START
-;if no reply is pending:
-;reply_pending = ID
-;else if command is 'A' and received length byte is 1:
-;advance rx_state to GET_CHANNEL
-;otherwise:
-;reset rx_state to WAIT_START
-;return
-;GET_CHANNEL:
-;reset rx_state to WAIT_START
-;if received channel byte is 0 (AN0) and no reply is pending:
-;reply_pending = ADC
-;set adc_state to IDLE
-;return
-;ServiceReply:
-;if no reply is pending, return
-;if TX packet has unsent bytes, return
-;if receive error is pending:
-;fill tx_data with error response    # 24 45 02 EE 00
-;set tx_length to 5
-;else if ID reply is pending:
-;fill tx_data with ID response       # 24 49 02 33 75
-;set tx_length to 5
-;else if ADC reply is pending:
-;call ServiceAdc
-;if ADC result is not READY, return
-;fill tx_data with ADC response      # 24 41 03 00 HH LL
-;set tx_length to 6
-;reset adc_state
-;reset tx_count
-;clear reply_pending
-;return
-;ServiceAdc:
-;if adc_state is IDLE:
-;start AN0 conversion
-;set adc_state to BUSY
-;return
-;if adc_state is BUSY:
-;if conversion is still running, return
-;save both ADC result bytes
-;set adc_state to READY
-;return
-;ServiceTx:
-;if tx_count = tx_length, return
-;if TXREG cannot accept another byte, return
-;write tx_data[tx_count] to TXREG
-;increment tx_count
-;return
-	
 	
 ; Reset Vector at 0000h. Execution starts here after reset.
 PSECT resetVect,class=CODE,delta=2
@@ -162,9 +78,8 @@ PSECT code,class=CODE,delta=2
 Setup: 
     ;       Bank 3
     BANKSEL ANSEL
-    MOVLW   0b00000001    ;only AN0 analog, RA1 digital (diagnostic)
-    MOVWF   ANSEL
-    CLRF    ANSELH
+    BSF     ANSEL,0       ;set AN0 as an analog
+    BCF     ANSEL,1       ;set AN1 as a digital I/O
     CLRF    BAUDCTL       ;BRG16 = 0 (8-bit baud generator)
     ;       Bank 1
     BANKSEL TXSTA
@@ -182,7 +97,7 @@ Setup:
     BANKSEL RCSTA
     MOVLW   0b10010000    ;enable the serial port and continuous receive
     MOVWF   RCSTA
-    MOVLW   0b01000001    ;ADC clock = Fosc/8, channel = AN0, ADC turned on
+    MOVLW   0b01000001    ;ADC clock = Fosc/8, Channel = AN0, ADC turned on
     MOVWF   ADCON0
     CLRF    PORTA         ;start with the diagnostic pin low
     CLRF    rx_state      ;parser begins looking for a '$'
@@ -443,7 +358,7 @@ ServiceAdc:
     RETURN                  ;already finished ? nothing more to do
 
 ;   Conversion is in progress, has it finished yet?
-    BTFSC   ADCON0,1        ;GO/DONE bit still set?
+    BTFSC   ADCON0,1        ;GO/DONE bit still set
     RETURN                  ;yes, still busy
 
 ;   Conversion finished ? save both result bytes
@@ -500,11 +415,11 @@ Delay5ms_Loop:
     GOTO    $-1
     RETURN
 Delay50us_Loop:
-    MOVLW 0x0F              ;1 Tcy move W=15 to count
-    MOVWF Count_50us         ;1 Tcy make count equal 15
+    MOVLW   0x0F            ;1 Tcy move W=15 to count
+    MOVWF   Count_50us      ;1 Tcy make count equal 15
                             ;Delay loop is equals 44 Tcy when count is 15         
-    DECFSZ Count_50us,1     ;1 Tcy if not zero, 2 Tcy if zero
-    GOTO $-1                ;2 Tcy delay runs 15 times before skiping
+    DECFSZ  Count_50us,1    ;1 Tcy if not zero, 2 Tcy if zero
+    GOTO    $-1             ;2 Tcy delay runs 15 times before skiping
     RETURN
 
     END
