@@ -40,6 +40,9 @@
             StatusTimer = new System.Windows.Forms.Timer(components);
             ComListBox = new ListBox();
             EnableTimerCheckBox = new CheckBox();
+            IDButton = new Button();
+            IDLabelButton = new Button();
+            ADCButton = new Button();
             StatusStrip.SuspendLayout();
             SuspendLayout();
             // 
@@ -115,7 +118,9 @@
             // 
             // StatusTimer
             // 
+            StatusTimer.Enabled = true;
             StatusTimer.Interval = 250;
+            StatusTimer.Tick += StatusTimer_Tick;
             // 
             // ComListBox
             // 
@@ -124,7 +129,6 @@
             ComListBox.Name = "ComListBox";
             ComListBox.Size = new Size(579, 304);
             ComListBox.TabIndex = 7;
-            //ComListBox.SelectedIndexChanged += ComListBox_SelectedIndexChanged;
             // 
             // EnableTimerCheckBox
             // 
@@ -136,11 +140,44 @@
             EnableTimerCheckBox.Text = "Enable Timer";
             EnableTimerCheckBox.UseVisualStyleBackColor = true;
             // 
+            // IDButton
+            // 
+            IDButton.Location = new Point(12, 375);
+            IDButton.Name = "IDButton";
+            IDButton.Size = new Size(112, 34);
+            IDButton.TabIndex = 9;
+            IDButton.Text = "Send ID";
+            IDButton.UseVisualStyleBackColor = true;
+            IDButton.Click += IDButton_Click;
+            // 
+            // IDLabelButton
+            // 
+            IDLabelButton.Location = new Point(12, 335);
+            IDLabelButton.Name = "IDLabelButton";
+            IDLabelButton.Size = new Size(112, 34);
+            IDLabelButton.TabIndex = 10;
+            IDLabelButton.Text = "ID Label";
+            IDLabelButton.UseVisualStyleBackColor = true;
+            IDLabelButton.Click += IDLabelButton_Click;
+            // 
+            // ADCButton
+            // 
+            ADCButton.Location = new Point(12, 295);
+            ADCButton.Name = "ADCButton";
+            ADCButton.Size = new Size(112, 34);
+            ADCButton.TabIndex = 11;
+            ADCButton.Text = "Check ADC";
+            ADCButton.UseVisualStyleBackColor = true;
+            ADCButton.Click += ADCButton_Click;
+            // 
             // SerialData
             // 
             AutoScaleDimensions = new SizeF(10F, 25F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(800, 450);
+            Controls.Add(ADCButton);
+            Controls.Add(IDLabelButton);
+            Controls.Add(IDButton);
             Controls.Add(EnableTimerCheckBox);
             Controls.Add(ComListBox);
             Controls.Add(StatusStrip);
@@ -171,5 +208,8 @@
         private ListBox ComListBox;
         private CheckBox EnableTimerCheckBox;
         private ToolStripStatusLabel StatusLabel;
+        private Button IDButton;
+        private Button IDLabelButton;
+        private Button ADCButton;
     }
 }

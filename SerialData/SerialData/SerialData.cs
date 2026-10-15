@@ -10,19 +10,26 @@ namespace SerialData
         {
             InitializeComponent();
             UpdatePortSelection();
+            StatusTimer.Interval = 20;             // timer ticks every 20 ms
+            StatusTimer.Tick += StatusTimer_Tick;  // connect the timer to its method
+            StatusTimer.Start();                   // start the timer
         }
 
         SerialPort _serialPort = new SerialPort();
+        byte[] rxBuffer = new byte[10];    // bytes received so far
+        int rxCount = 0;                   // how many bytes are in rxBuffer
+        bool waiting = false;              // true while we wait for a reply
+        DateTime deadline;                 // when we give up waiting
+
         void SerialPortSetup()
         {
             _serialPort.Close();
             _serialPort = new SerialPort();
-            _serialPort.PortName = "COM6"; // Set your COM port here
-            _serialPort.BaudRate = 9600; // Set your baud rate here
+            _serialPort.PortName = PortsComboBox.Text;   // use the port picked in the drop-down
+            _serialPort.BaudRate = 9600;                 // use 4800 only for the framing error test
             _serialPort.DataBits = 8;
             _serialPort.Parity = Parity.None;
-            //_serialPort.StopBits = StopBits.One;
-
+            _serialPort.StopBits = StopBits.One;
         }
 
         void SerialConnect()
@@ -69,22 +76,6 @@ namespace SerialData
 
         }
 
-        void WriteToDigitalOutputs()
-        {
-            // Safer conversion (prevents crashes if the text is invalid)
-            if (byte.TryParse(OutputTextBox.Text, out byte result))
-            {
-                byte myByte = byte.Parse(OutputTextBox.Text);
-                byte[] Whatsit = { 0x20, myByte };
-                _serialPort.Write(Whatsit, 0, 2);
-            }
-            else
-            {
-                MessageBox.Show("Please enter a valid number between 0 and 255.");
-                OutputTextBox.Text = "0"; // Reset to a default value
-            }
-        }
-
         // Event Handlers Below Here ---------------------------------------------
         private void ExitButton_Click(object sender, EventArgs e)
         {
@@ -97,21 +88,9 @@ namespace SerialData
             SerialConnect();
         }
 
-        private void WriteButton_Click(object sender, EventArgs e)
-        {
-            //SerialSend();
-            //TestQyAtBoard();
-            WriteToDigitalOutputs();
-        }
-
         private void ReadButton_Click(object sender, EventArgs e)
         {
             SerialRead();
-        }
-
-        private void StatusStrip_ItemClicked(object sender, ToolStripItemClickedEventArgs e)
-        {
-            // Do nothing for now
         }
 
         private void StatusTimer_Tick(object sender, EventArgs e)
@@ -139,5 +118,19 @@ namespace SerialData
             SerialSend();
         }
 
+        private void ADCButton_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void IDLabelButton_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void IDButton_Click(object sender, EventArgs e)
+        {
+
+        }
     }
 }

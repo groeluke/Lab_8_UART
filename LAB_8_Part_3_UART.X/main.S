@@ -41,6 +41,7 @@ tx_data2        EQU 0x7B        ;Length
 tx_data3        EQU 0x7C        ;Data byte 0
 tx_data4        EQU 0x7D        ;Data byte 1
 tx_data5        EQU 0x7E        ;Data byte 2
+	
 ;              Required Setup
 ;EUSART:
 ;reuse Part 2 operation at 9600 baud, asynchronous 8N1
@@ -218,7 +219,7 @@ ServiceRx:
     MOVWF   rx_byte
     MOVLW   3
     SUBWF   reply_pending,W
-    BTFSC   STATUS,C
+    BTFSC   STATUS,0
     RETURN
 
     CALL    ParseRxByte
@@ -227,15 +228,15 @@ ServiceRx:
 ; Recover from an overrun: turn continuous receive off and on again,
 ; empty any leftover bytes, then queue the overrun error packet.
 RxOverrun:
-    BCF     RCSTA,4       ; CREN off clears the overrun flag
-    BSF     RCSTA,4       ; CREN on restarts the receiver
+    BCF     RCSTA,4       ;CREN off clears the overrun flag
+    BSF     RCSTA,4       ;CREN on restarts the receiver
 RxFlush:
     BTFSS   PIR1,5
     GOTO    RxOverrunDone
-    MOVF    RCREG,W       ; throw away whatever is still in the FIFO
+    MOVF    RCREG,W       ;throw away whatever is still in the FIFO
     GOTO    RxFlush
 RxOverrunDone:
-    MOVLW   4             ; tell ServiceReply we need an overrun packet
+    MOVLW   4             ;tell ServiceReply we need an overrun packet
     GOTO    QueueError
 
 ; Framing error ? read the bad byte (that clears the flag) and queue the
@@ -245,8 +246,8 @@ RxFraming:
     MOVLW   3
 QueueError:
     MOVWF   reply_pending
-    CLRF    rx_state      ; abandon any partial packet we were building
-    CLRF    adc_state     ; also cancel any ADC conversion that was started
+    CLRF    rx_state      ;abandon any partial packet we were building
+    CLRF    adc_state     ;also cancel any ADC conversion that was started
     RETURN
 
 ;ParseRxByte: Looks at one received byte and advances the little state machine.
@@ -254,213 +255,213 @@ QueueError:
 ; remember where we left off.
 ParseRxByte:
     MOVF    rx_state,W
-    BTFSC   STATUS,Z
+    BTFSC   STATUS,2
     GOTO    StateStart
     XORLW   1
-    BTFSC   STATUS,Z
+    BTFSC   STATUS,2
     GOTO    StateCommand
     MOVF    rx_state,W
     XORLW   2
-    BTFSC   STATUS,Z
+    BTFSC   STATUS,2
     GOTO    StateLength
-    GOTO    StateChannel  ; only possibility left is state 3
+    GOTO    StateChannel  ;only possibility left is state 3
 
-; Waiting for the magic start byte
+;Waiting for the magic start byte
 StateStart:
     MOVF    rx_byte,W
-    XORLW   0x24          ; is it '$'?
-    BTFSS   STATUS,Z
+    XORLW   0x24          ;is it '$'?
+    BTFSS   STATUS,2
     RETURN                ;no ? keep waiting
     MOVLW   1
-    MOVWF   rx_state      ; next byte should be the command
+    MOVWF   rx_state      ;next byte should be the command
     RETURN
 
-; Waiting for the command letter
+;Waiting for the command letter
 StateCommand:
     MOVF    rx_byte,W
-    XORLW   0x49          ; 'I' for device ID?
-    BTFSC   STATUS,Z
+    XORLW   0x49          ;'I' for device ID?
+    BTFSC   STATUS,2
     GOTO    SaveCmd
     MOVF    rx_byte,W
-    XORLW   0x41          ; 'A' for ADC?
-    BTFSS   STATUS,Z
-    GOTO    ResetParser   ; anything else is ignored
+    XORLW   0x41          ;'A' for ADC?
+    BTFSS   STATUS,2
+    GOTO    ResetParser   ;anything else is ignored
 SaveCmd:
     MOVF    rx_byte,W
     MOVWF   rx_command
     MOVLW   2
-    MOVWF   rx_state      ; next byte should be the length
+    MOVWF   rx_state      ;next byte should be the length
     RETURN
 
-; Waiting for the length byte
+;Waiting for the length byte
 StateLength:
     MOVF    rx_command,W
     XORLW   0x49          ; was the command 'I'?
-    BTFSS   STATUS,Z
+    BTFSS   STATUS,2
     GOTO    LengthForA
 
-    ; Device-ID request must have length 0
+;   Device-ID request must have length 0
     MOVF    rx_byte,F
-    BTFSS   STATUS,Z
+    BTFSS   STATUS,2
     GOTO    ResetParser
-    CLRF    rx_state      ; request is complete
-    MOVF    reply_pending,F ; is another answer already waiting?
-    BTFSS   STATUS,Z
-    RETURN                ; yes ? ignore this request
+    CLRF    rx_state      ;request is complete
+    MOVF    reply_pending,F ;is another answer already waiting?
+    BTFSS   STATUS,2
+    RETURN                ;if yes ignore this request
     MOVLW   1
-    MOVWF   reply_pending ; queue the ID answer
+    MOVWF   reply_pending ;queue the ID answer
     RETURN
 
 LengthForA:
-    ; ADC request must have length 1
+;   ADC request must have length 1
     MOVF    rx_byte,W
     XORLW   1
-    BTFSS   STATUS,Z
+    BTFSS   STATUS,2
     GOTO    ResetParser
     MOVLW   3
-    MOVWF   rx_state      ; next (and last) byte is the channel number
+    MOVWF   rx_state      ;next (and last) byte is the channel number
     RETURN
 
-; Waiting for the channel number (only used by the ADC request)
+;Waiting for the channel number (only used by the ADC request)
 StateChannel:
-    CLRF    rx_state      ; packet is finished no matter what
-    MOVF    rx_byte,F     ; must be channel 0 (AN0)
-    BTFSS   STATUS,Z
-    RETURN                ; any other channel is simply ignored
+    CLRF    rx_state      ;packet is finished no matter what
+    MOVF    rx_byte,F     ;must be channel 0 (AN0)
+    BTFSS   STATUS,2
+    RETURN                ;any other channel is simply ignored
     MOVF    reply_pending,F
-    BTFSS   STATUS,Z
-    RETURN                ; already have something pending ? ignore
+    BTFSS   STATUS,2
+    RETURN                ;already have something pending return and ignore the rest
     MOVLW   2
-    MOVWF   reply_pending ; queue an ADC answer
-    CLRF    adc_state     ; make sure the conversion starts from idle
+    MOVWF   reply_pending ;queue an ADC answer
+    CLRF    adc_state     ;make sure the conversion starts from idle
     RETURN
 
 ResetParser:
-    CLRF    rx_state      ; go back to looking for a new '$'
+    CLRF    rx_state      ;go back to looking for a new '$'
     RETURN
 
 ;ServiceReply: When the previous answer has been completely sent and a new 
 ;one is waiting, this routine builds the complete packet in the six-byte buffer.
 ServiceReply:
-    ; Don?t start a new packet until the old one has finished leaving the UART
+;   Don?t start a new packet until the old one has finished leaving the UART
     MOVF    tx_length,W
     SUBWF   tx_count,W
-    BTFSS   STATUS,C
+    BTFSS   STATUS,0
     RETURN
 
     MOVF    reply_pending,W
-    BTFSC   STATUS,Z
-    RETURN                      ; nothing waiting
+    BTFSC   STATUS,2
+    RETURN                  ;nothing waiting
 
     XORLW   3
-    BTFSC   STATUS,Z
+    BTFSC   STATUS,2
     GOTO    BuildFraming
     MOVF    reply_pending,W
     XORLW   4
-    BTFSC   STATUS,Z
+    BTFSC   STATUS,2
     GOTO    BuildOverrun
     MOVF    reply_pending,W
     XORLW   1
-    BTFSC   STATUS,Z
+    BTFSC   STATUS,2
     GOTO    BuildId
 
-    ; Must be an ADC request ? keep working on the conversion until it finishes
+;   Must be an ADC request ? keep working on the conversion until it finishes
     CALL    ServiceAdc
     MOVF    adc_state,W
-    XORLW   2                   ; is the result ready?
-    BTFSS   STATUS,Z
-    RETURN                      ; not yet ? try again next time around the main loop
+    XORLW   2               ;is the result ready?
+    BTFSS   STATUS,2
+    RETURN                  ;not yet ? try again next time around the main loop
     GOTO    BuildAdc
 
-; Device ID answer:  $ I 2 0x33 0x75
+;Device ID answer:  $ I 2 0x33 0x75
 BuildId:
     MOVLW   0x24
-    MOVWF   tx_data             ; start byte
+    MOVWF   tx_data0         ;start byte
     MOVLW   0x49
-    MOVWF   tx_data+1           ; command 'I'
+    MOVWF   tx_data0+1       ;command 'I'
     MOVLW   0x02
-    MOVWF   tx_data+2           ; two data bytes follow
+    MOVWF   tx_data0+2       ;two data bytes follow
     MOVLW   0x33
-    MOVWF   tx_data+3
+    MOVWF   tx_data0+3
     MOVLW   0x75
-    MOVWF   tx_data+4
+    MOVWF   tx_data0+4
     MOVLW   5
     GOTO    FinishBuild
 
-; ADC answer:  $ A 3 0x00 HH LL
+;ADC answer:  $ A 3 0x00 HH LL
 BuildAdc:
     MOVLW   0x24
-    MOVWF   tx_data
+    MOVWF   tx_data0
     MOVLW   0x41
-    MOVWF   tx_data+1
+    MOVWF   tx_data0+1
     MOVLW   0x03
-    MOVWF   tx_data+2           ; three data bytes
-    CLRF    tx_data+3           ; channel 0
+    MOVWF   tx_data0+2       ;three data bytes
+    CLRF    tx_data0+3       ;channel 0
     MOVF    adc_high,W
-    MOVWF   tx_data+4
+    MOVWF   tx_data0+4
     MOVF    adc_low,W
-    MOVWF   tx_data+5
-    CLRF    adc_state           ; ready for the next conversion request
+    MOVWF   tx_data0+5
+    CLRF    adc_state       ;ready for the next conversion request
     MOVLW   6
     GOTO    FinishBuild
 
-; Framing-error answer
+;Framing-error answer
 BuildFraming:
-    MOVLW   0x01                ; error code 1
+    MOVLW   0x01            ;error code 1
     GOTO    BuildError
 
-; Overrun-error answer
+;Overrun-error answer
 BuildOverrun:
-    MOVLW   0x02                ; error code 2
+    MOVLW   0x02            ;error code 2
 
 BuildError:
-    MOVWF   tx_data+3           ; the error code goes in the third data byte
+    MOVWF   tx_data0+3       ;the error code goes in the third data byte
     MOVLW   0x24
-    MOVWF   tx_data
+    MOVWF   tx_data0
     MOVLW   0x45
-    MOVWF   tx_data+1           ; command 'E'
+    MOVWF   tx_data0+1       ;command 'E'
     MOVLW   0x02
-    MOVWF   tx_data+2           ; two data bytes
-    CLRF    tx_data+4           ; detail byte is always zero
+    MOVWF   tx_data0+2       ;two data bytes
+    CLRF    tx_data0+4       ;detail byte is always zero
     MOVLW   5
 
 FinishBuild:
-    MOVWF   tx_length           ; remember how long the packet is
-    CLRF    tx_count            ; start sending from the first byte
-    CLRF    reply_pending       ; this answer is now in the buffer, so clear the flag
+    MOVWF   tx_length       ;remember how long the packet is
+    CLRF    tx_count        ;start sending from the first byte
+    CLRF    reply_pending   ;this answer is now in the buffer, so clear the flag
     RETURN
 
 ;ServiceAdc: Starts a conversion on one pass through the main 
 ;loop and collects the result on a later pass.  Never sits and waits.
 ServiceAdc:
     MOVF    adc_state,F
-    BTFSC   STATUS,Z
-    GOTO    AdcStart            ; idle ? kick off a conversion
+    BTFSC   STATUS,2
+    GOTO    AdcStart        ;if idle kick off a conversion
 
     MOVF    adc_state,W
     XORLW   1
-    BTFSS   STATUS,Z
-    RETURN                      ; already finished ? nothing more to do
+    BTFSS   STATUS,2
+    RETURN                  ;already finished ? nothing more to do
 
-    ; Conversion is in progress ? has it finished yet?
-    BTFSC   ADCON0,1            ; GO/DONE bit still set?
-    RETURN                      ; yes, still busy
+;   Conversion is in progress, has it finished yet?
+    BTFSC   ADCON0,1        ;GO/DONE bit still set?
+    RETURN                  ;yes, still busy
 
-    ; Conversion finished ? save both result bytes
+;   Conversion finished ? save both result bytes
     MOVF    ADRESH,W
     MOVWF   adc_high
     BANKSEL ADRESL
     MOVF    ADRESL,W
     MOVWF   adc_low
-    BANKSEL ADCON0              ; make sure we are back in bank 0
+    BANKSEL ADCON0          ;make sure we are back in bank 0
     MOVLW   2
-    MOVWF   adc_state           ; mark the result as ready
+    MOVWF   adc_state       ;mark the result as ready
     RETURN
 
 AdcStart:
-    BSF     ADCON0,1            ; set the GO/DONE bit to begin the conversion
+    BSF     ADCON0,1        ;set the GO/DONE bit to begin the conversion
     MOVLW   1
-    MOVWF   adc_state           ; remember that we are now busy
+    MOVWF   adc_state       ;remember that we are now busy
     RETURN
 
 ;ServiceTx: If there are still bytes left in the reply packet and 
@@ -469,19 +470,19 @@ AdcStart:
 ServiceTx:
     MOVF    tx_length,W
     SUBWF   tx_count,W
-    BTFSC   STATUS,C
-    RETURN                      ; everything has already been sent
+    BTFSC   STATUS,0
+    RETURN                  ;everything has already been sent
 
-    BTFSS   PIR1,4              ; is the transmit register empty?
-    RETURN                      ; no ? try again later
+    BTFSS   PIR1,4          ;is the transmit register empty?
+    RETURN                  ;if no try again later
 
-    ; Point FSR at the next byte that needs to go out
-    MOVLW   tx_data
-    ADDWF   tx_count,W          ; W now holds the address of tx_data[tx_count]
+;   Point FSR at the next byte that needs to go out
+    MOVLW   tx_data0
+    ADDWF   tx_count,W      ;W now holds the address of tx_data[tx_count]
     MOVWF   FSR
-    MOVF    INDF,W              ; read the byte that FSR is pointing at
-    MOVWF   TXREG               ; writing to TXREG starts the transmission
-    INCF    tx_count,F          ; one more byte has been queued
+    MOVF    INDF,W          ;read the byte that FSR is pointing at
+    MOVWF   TXREG           ;writing to TXREG starts the transmission
+    INCF    tx_count,F      ;one more byte has been queued
     RETURN
 
     END
