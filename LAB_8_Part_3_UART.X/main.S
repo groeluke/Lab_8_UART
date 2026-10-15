@@ -184,7 +184,7 @@ ParseRxByte:
 StateStart:
     MOVF    rx_byte,W
     XORLW   0x24          ;is it '$'?
-    BTFSS   STATUS,2
+    BTFSS   STATUS,2      ;did the $ come?
     RETURN                ;no ? keep waiting
     MOVLW   1
     MOVWF   rx_state      ;next byte should be the command
@@ -194,11 +194,11 @@ StateStart:
 StateCommand:
     MOVF    rx_byte,W
     XORLW   0x49          ;'I' for device ID?
-    BTFSC   STATUS,2
+    BTFSC   STATUS,2      ;is Rx asking for the ID?
     GOTO    SaveCmd
     MOVF    rx_byte,W
     XORLW   0x41          ;'A' for ADC?
-    BTFSS   STATUS,2
+    BTFSS   STATUS,2      ;is Rx asking for the ADC reading
     GOTO    ResetParser   ;anything else is ignored
 SaveCmd:
     MOVF    rx_byte,W
@@ -355,13 +355,13 @@ ServiceAdc:
     MOVF    adc_state,W
     XORLW   1
     BTFSS   STATUS,2
-    RETURN                  ;already finished ? nothing more to do
+    RETURN                  ;is it already finished then nothing more to do
 
 ;   Conversion is in progress, has it finished yet?
     BTFSC   ADCON0,1        ;GO/DONE bit still set
     RETURN                  ;yes, still busy
 
-;   Conversion finished ? save both result bytes
+;   Is the conversion finished, then save both result bytes
     MOVF    ADRESH,W
     MOVWF   adc_high
     BANKSEL ADRESL
@@ -399,6 +399,8 @@ ServiceTx:
     INCF    tx_count,F      ;one more byte has been queued
     RETURN
     
+;Delay 5ms is only here to cause the overrun error,if you want to see the
+;over run error remove the ";" in main for the call 5ms delay
 Delay5ms:
     MOVLW   0x5E
     MOVWF   Count_5ms
