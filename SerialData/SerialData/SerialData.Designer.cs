@@ -56,7 +56,7 @@
             // 
             // ReadButton
             // 
-            ReadButton.Location = new Point(329, 344);
+            ReadButton.Location = new Point(484, 344);
             ReadButton.Name = "ReadButton";
             ReadButton.Size = new Size(149, 65);
             ReadButton.TabIndex = 2;
@@ -66,7 +66,7 @@
             // 
             // SendButton
             // 
-            SendButton.Location = new Point(174, 344);
+            SendButton.Location = new Point(329, 344);
             SendButton.Name = "SendButton";
             SendButton.Size = new Size(149, 65);
             SendButton.TabIndex = 3;
@@ -120,7 +120,7 @@
             // 
             // IDButton
             // 
-            IDButton.Location = new Point(12, 375);
+            IDButton.Location = new Point(211, 375);
             IDButton.Name = "IDButton";
             IDButton.Size = new Size(112, 34);
             IDButton.TabIndex = 9;
@@ -130,7 +130,7 @@
             // 
             // ADCButton
             // 
-            ADCButton.Location = new Point(12, 335);
+            ADCButton.Location = new Point(211, 335);
             ADCButton.Name = "ADCButton";
             ADCButton.Size = new Size(112, 34);
             ADCButton.TabIndex = 11;
@@ -140,7 +140,8 @@
             // 
             // ServoScrollBar
             // 
-            ServoScrollBar.Location = new Point(12, 180);
+            ServoScrollBar.Location = new Point(12, 360);
+            ServoScrollBar.Maximum = 180;
             ServoScrollBar.Name = "ServoScrollBar";
             ServoScrollBar.Size = new Size(168, 39);
             ServoScrollBar.TabIndex = 13;

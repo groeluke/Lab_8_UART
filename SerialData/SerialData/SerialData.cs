@@ -89,47 +89,49 @@ namespace SerialData
             nextTempTime = DateTime.Now.AddSeconds(1);   // try again later
         }
 
+        void SendServo(int degrees)
+        {
+            if (!picFound || !_serialPort.IsOpen) return;
+
+            // 0° = 500 µs, 90° = 1500 µs, 180° = 2500 µs
+            int pw = 500 + (degrees * 2000) / 180;
+            int match = 0xB1E0 + pw;
+
+            byte hi = (byte)(match >> 8);
+            byte lo = (byte)(match & 0xFF);
+
+            byte[] packet = { 0x24, 0x53, 0x02, hi, lo };
+            SendBytes(packet);
+            AddToList("TX", packet, 5, degrees + "°");
+        }
 
         // Send bytes to the PIC, then start waiting for a reply
         void SendBytes(byte[] data)
         {
-            if (_serialPort.IsOpen == false)
-            {
-                MessageBox.Show("Connect first.");
-                return;
-            }
-            if (waiting == true)
-            {
-                return;                               // still waiting on the last request
-            }
+            if (!_serialPort.IsOpen || !picFound) return;
+            if (waiting) return;
 
-            _serialPort.DiscardInBuffer();            // throw away old leftover bytes
-            rxCount = 0;                              // empty our receive buffer
-            _serialPort.Write(data, 0, data.Length);  // send the real byte values
+            _serialPort.DiscardInBuffer();
+            rxCount = 0;
+            _serialPort.Write(data, 0, data.Length);
             AddToList("TX", data, data.Length, "");
-
             waiting = true;
-            deadline = DateTime.Now.AddMilliseconds(500);   // wait up to 0.5 seconds
+            deadline = DateTime.Now.AddMilliseconds(500);
         }
 
         // Turn the typed hex text (like "24 49 00") into bytes and send them
-        void SerialSend()
+        void SerialSend(int degrees)
         {
-            string[] parts = TempTextBox.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            byte[] data = new byte[parts.Length];
-            try
-            {
-                for (int i = 0; i < parts.Length; i++)
-                {
-                    data[i] = Convert.ToByte(parts[i], 16);   // 16 = text is hexadecimal
-                }
-            }
-            catch (Exception)
-            {
-                MessageBox.Show("Type hex like: 24 49 00");
-                return;
-            }
-            SendBytes(data);
+            if (!picFound || !_serialPort.IsOpen) return;
+
+            int pw = 500 + (degrees * 2000) / 180;
+            int match = 0xB1E0 + pw;
+
+            byte hi = (byte)(match >> 8);
+            byte lo = (byte)(match & 0xFF);
+
+            byte[] packet = { 0x24, 0x53, 0x02, hi, lo };
+            SendBytes(packet);          // this already adds to the list
         }
 
         // ---------- showing things in the list ----------
@@ -149,25 +151,28 @@ namespace SerialData
         // A full reply has arrived, so decode it
         string Decode()
         {
-            // ID reply: 24 49 02 33 75
             if (rxBuffer[1] == 0x49)
             {
-                int id = rxBuffer[3] * 256 + rxBuffer[4];   // high byte first
+                int id = (rxBuffer[3] << 8) | rxBuffer[4];
                 return "Device ID = 0x" + id.ToString("X4");
             }
-            // ADC reply: 24 41 03 00 HH LL
-            if (rxBuffer[1] == 0x41)
+
+            if (rxBuffer[1] == 0x41)   // ADC reply
             {
-                int adc = rxBuffer[4] * 256 + rxBuffer[5];  // 10-bit value, 0 to 1023
-                return "ADC = " + adc;
+                int adc = (rxBuffer[4] << 8) | rxBuffer[5];
+                double volts = adc * (VREF / 1024.0);
+                double tempF = volts / 0.010;
+                TempTextBox.Text = tempF.ToString("F1") + " °F";
+                return "Temp = " + tempF.ToString("F1") + " °F";
             }
-            // Error reply: 24 45 02 code 00
+
             if (rxBuffer[1] == 0x45)
             {
                 if (rxBuffer[3] == 1) return "FRAMING ERROR";
                 if (rxBuffer[3] == 2) return "OVERRUN ERROR";
+                if (rxBuffer[3] == 3) return "SERVO ERROR";
             }
-            return "Unknown reply";
+            return "Unknown";
         }
 
         // ---------- timer: runs every 20 ms, never blocks ----------
@@ -211,37 +216,20 @@ namespace SerialData
                 txWaiting = _serialPort.BytesToWrite;
             }
 
-            StatusLabel.Text = $"Port: {portName} tx:{txWaiting} rx:{rxWaiting}";
-        }
-
-        void ForceAFramingError()
-        {
-            if (_serialPort.IsOpen == false)
+            if (picFound && DateTime.Now >= nextTempTime)
             {
-                MessageBox.Show("Connect first.");
-                return;
+                SendBytes(new byte[] { 0x24, 0x41, 0x01, 0x00 });
+                nextTempTime = DateTime.Now.AddSeconds(1);
             }
 
-            // Switch to wrong baud
-            _serialPort.BaudRate = 4800;
+            // If we lost the PIC, keep trying to find it
+            if (!picFound && DateTime.Now >= nextTempTime)
+            {
+                DiscoverPic();
+            }
 
-            // Send one byte
-            byte[] bad = { 0x00 };
-            _serialPort.Write(bad, 0, 1);
-            AddToList("TX", bad, 1, "Sent at 4800 to force FRAMING");
-
-            // Switch back immediately
-            _serialPort.BaudRate = 9600;
-
-            // Clear any garbage and wait
-            System.Threading.Thread.Sleep(20);
-            _serialPort.DiscardInBuffer();
-            rxCount = 0;
-
-            waiting = true;
-            deadline = DateTime.Now.AddMilliseconds(1000);
+            StatusLabel.Text = $"Port: {portName} tx:{txWaiting} rx:{rxWaiting}";
         }
-
 
         // Event Handlers Below Here *****************************************
         private void ExitButton_Click(object sender, EventArgs e)
@@ -270,14 +258,13 @@ namespace SerialData
             SendBytes(new byte[] { 0x24, 0x49, 0x00 });          // Device ID request
         }
 
-        private void FramingErrorButton_Click(object sender, EventArgs e)
-        {
-            ForceAFramingError();
-        }
-
         private void ServoScrollBar_Scroll(object sender, ScrollEventArgs e)
         {
+            // Set the scrollbar properties in the designer:
+            // Minimum = 0, Maximum = 180, Value = 90, LargeChange = 1, SmallChange = 1
 
+            int degrees = ServoScrollBar.Value;
+            SendServo(degrees);
         }
     }
 }
