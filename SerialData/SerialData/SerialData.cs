@@ -9,7 +9,7 @@ namespace SerialData
         public SerialData()
         {
             InitializeComponent();
-            UpdatePortSelection();
+            VerifySerialPort();
             StatusTimer.Interval = 20;             // timer ticks every 20 ms
             StatusTimer.Tick += StatusTimer_Tick;  // connect the timer to its method
             StatusTimer.Start();                   // start the timer
@@ -21,22 +21,50 @@ namespace SerialData
         bool waiting = false;              // true while we wait for a reply
         DateTime deadline;                 // when we give up waiting
 
-        void SerialPortSetup()
+
+        void VerifySerialPort()
         {
-            _serialPort.Close();
-            _serialPort = new SerialPort();
-            _serialPort.PortName = PortsComboBox.Text;   // use the port picked in the drop-down
-            _serialPort.BaudRate = 9600;                 // use 4800 only for the framing error test
-            _serialPort.DataBits = 8;
-            _serialPort.Parity = Parity.None;
-            _serialPort.StopBits = StopBits.One;
+            //send the bytes to check ports and find the one that is connected to the PIC
+            foreach (string port in SerialPort.GetPortNames())
+            {
+                _serialPort.PortName = port;
+                _serialPort.BaudRate = 9600;
+                _serialPort.DataBits = 8;
+                _serialPort.Parity = Parity.None;
+                _serialPort.StopBits = StopBits.One;
+                try
+                {
+                    _serialPort.Open();
+                    // Send a test command to the PIC
+                    byte[] testCommand = { 0x24, 0x49, 0x00 }; // Device ID request
+                    _serialPort.Write(testCommand, 0, testCommand.Length);
+                    // Wait for a response
+                    System.Threading.Thread.Sleep(100); // wait for 100 ms
+                    if (_serialPort.BytesToRead > 0)
+                    {
+                        byte[] response = new byte[_serialPort.BytesToRead];
+                        _serialPort.Read(response, 0, response.Length);
+                        if (response.Length >= 5 && response[1] == 0x49) // Check for ID reply
+                        {
+                            PortsComboBox.Items.Add(port);
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                    // Ignore any exceptions and continue checking other ports
+                }
+                finally
+                {
+                    if (_serialPort.IsOpen)
+                    {
+                        _serialPort.Close();
+                    }
+                }
+            }
+
         }
 
-        void SerialConnect()
-        {
-            _serialPort.Close();
-            _serialPort.Open();
-        }
 
         // Send bytes to the PIC, then start waiting for a reply
         void SendBytes(byte[] data)
@@ -63,7 +91,7 @@ namespace SerialData
         // Turn the typed hex text (like "24 49 00") into bytes and send them
         void SerialSend()
         {
-            string[] parts = OutputTextBox.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            string[] parts = TempTextBox.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             byte[] data = new byte[parts.Length];
             try
             {
@@ -107,7 +135,6 @@ namespace SerialData
             if (rxBuffer[1] == 0x41)
             {
                 int adc = rxBuffer[4] * 256 + rxBuffer[5];  // 10-bit value, 0 to 1023
-                ADCButton.Text = "ADC: " + adc;
                 return "ADC = " + adc;
             }
             // Error reply: 24 45 02 code 00
@@ -191,34 +218,11 @@ namespace SerialData
             deadline = DateTime.Now.AddMilliseconds(1000);
         }
 
-        string[] GetSerialPorts()
-        {
-            return SerialPort.GetPortNames();
-        }
-
-        void UpdatePortSelection()
-        {
-            foreach (string port in GetSerialPorts())
-            {
-                PortsComboBox.Items.Add(port);
-            }
-
-            if (PortsComboBox.Items.Count > 0)
-            {
-                PortsComboBox.SelectedIndex = 0; // Select the first port by default
-            }
-        }
 
         // Event Handlers Below Here *****************************************
         private void ExitButton_Click(object sender, EventArgs e)
         {
             this.Close();
-        }
-
-        private void ConnectButton_Click(object sender, EventArgs e)
-        {
-            SerialPortSetup();
-            SerialConnect();
         }
 
         private void ReadButton_Click(object sender, EventArgs e)
@@ -245,6 +249,11 @@ namespace SerialData
         private void FramingErrorButton_Click(object sender, EventArgs e)
         {
             ForceAFramingError();
+        }
+
+        private void ServoScrollBar_Scroll(object sender, ScrollEventArgs e)
+        {
+
         }
     }
 }

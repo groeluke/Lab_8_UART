@@ -165,8 +165,8 @@ QueueError:
     RETURN
 
 ;ParseRxByte: Looks at one received byte and advances the little state machine.
-; The host may send the bytes of a packet with pauses between them, so we
-; remember where we left off.
+;The host may send the bytes of a packet with pauses between them, so we
+;remember where we left off.
 ParseRxByte:
     MOVF    rx_state,W
     BTFSC   STATUS,2
@@ -180,7 +180,7 @@ ParseRxByte:
     GOTO    StateLength
     GOTO    StateChannel  ;only possibility left is state 3
 
-;Waiting for the magic start byte
+;Waiting for the magice start byte
 StateStart:
     MOVF    rx_byte,W
     XORLW   0x24          ;is it '$'?

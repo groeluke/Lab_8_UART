@@ -30,25 +30,23 @@
         {
             components = new System.ComponentModel.Container();
             ExitButton = new Button();
-            ConnectButton = new Button();
             ReadButton = new Button();
             SendButton = new Button();
             PortsComboBox = new ComboBox();
-            OutputTextBox = new TextBox();
+            TempTextBox = new TextBox();
             StatusStrip = new StatusStrip();
             StatusLabel = new ToolStripStatusLabel();
             StatusTimer = new System.Windows.Forms.Timer(components);
             ComListBox = new ListBox();
-            EnableTimerCheckBox = new CheckBox();
             IDButton = new Button();
             ADCButton = new Button();
-            FramingErrorButton = new Button();
+            ServoScrollBar = new HScrollBar();
             StatusStrip.SuspendLayout();
             SuspendLayout();
             // 
             // ExitButton
             // 
-            ExitButton.Location = new Point(639, 360);
+            ExitButton.Location = new Point(639, 344);
             ExitButton.Name = "ExitButton";
             ExitButton.Size = new Size(149, 65);
             ExitButton.TabIndex = 0;
@@ -56,19 +54,9 @@
             ExitButton.UseVisualStyleBackColor = true;
             ExitButton.Click += ExitButton_Click;
             // 
-            // ConnectButton
-            // 
-            ConnectButton.Location = new Point(484, 360);
-            ConnectButton.Name = "ConnectButton";
-            ConnectButton.Size = new Size(149, 65);
-            ConnectButton.TabIndex = 1;
-            ConnectButton.Text = "&Connect";
-            ConnectButton.UseVisualStyleBackColor = true;
-            ConnectButton.Click += ConnectButton_Click;
-            // 
             // ReadButton
             // 
-            ReadButton.Location = new Point(329, 360);
+            ReadButton.Location = new Point(329, 344);
             ReadButton.Name = "ReadButton";
             ReadButton.Size = new Size(149, 65);
             ReadButton.TabIndex = 2;
@@ -78,7 +66,7 @@
             // 
             // SendButton
             // 
-            SendButton.Location = new Point(174, 360);
+            SendButton.Location = new Point(174, 344);
             SendButton.Name = "SendButton";
             SendButton.Size = new Size(149, 65);
             SendButton.TabIndex = 3;
@@ -94,12 +82,12 @@
             PortsComboBox.Size = new Size(182, 33);
             PortsComboBox.TabIndex = 4;
             // 
-            // OutputTextBox
+            // TempTextBox
             // 
-            OutputTextBox.Location = new Point(12, 64);
-            OutputTextBox.Name = "OutputTextBox";
-            OutputTextBox.Size = new Size(182, 31);
-            OutputTextBox.TabIndex = 5;
+            TempTextBox.Location = new Point(12, 64);
+            TempTextBox.Name = "TempTextBox";
+            TempTextBox.Size = new Size(182, 31);
+            TempTextBox.TabIndex = 5;
             // 
             // StatusStrip
             // 
@@ -130,16 +118,6 @@
             ComListBox.Size = new Size(579, 304);
             ComListBox.TabIndex = 7;
             // 
-            // EnableTimerCheckBox
-            // 
-            EnableTimerCheckBox.AutoSize = true;
-            EnableTimerCheckBox.Location = new Point(12, 122);
-            EnableTimerCheckBox.Name = "EnableTimerCheckBox";
-            EnableTimerCheckBox.Size = new Size(139, 29);
-            EnableTimerCheckBox.TabIndex = 8;
-            EnableTimerCheckBox.Text = "Enable Timer";
-            EnableTimerCheckBox.UseVisualStyleBackColor = true;
-            // 
             // IDButton
             // 
             IDButton.Location = new Point(12, 375);
@@ -160,32 +138,28 @@
             ADCButton.UseVisualStyleBackColor = true;
             ADCButton.Click += ADCButton_Click;
             // 
-            // FramingErrorButton
+            // ServoScrollBar
             // 
-            FramingErrorButton.Location = new Point(12, 262);
-            FramingErrorButton.Name = "FramingErrorButton";
-            FramingErrorButton.Size = new Size(112, 34);
-            FramingErrorButton.TabIndex = 12;
-            FramingErrorButton.Text = "Framing";
-            FramingErrorButton.UseVisualStyleBackColor = true;
-            FramingErrorButton.Click += FramingErrorButton_Click;
+            ServoScrollBar.Location = new Point(12, 180);
+            ServoScrollBar.Name = "ServoScrollBar";
+            ServoScrollBar.Size = new Size(168, 39);
+            ServoScrollBar.TabIndex = 13;
+            ServoScrollBar.Scroll += ServoScrollBar_Scroll;
             // 
             // SerialData
             // 
             AutoScaleDimensions = new SizeF(10F, 25F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(800, 450);
-            Controls.Add(FramingErrorButton);
+            Controls.Add(ServoScrollBar);
             Controls.Add(ADCButton);
             Controls.Add(IDButton);
-            Controls.Add(EnableTimerCheckBox);
             Controls.Add(ComListBox);
             Controls.Add(StatusStrip);
-            Controls.Add(OutputTextBox);
+            Controls.Add(TempTextBox);
             Controls.Add(PortsComboBox);
             Controls.Add(SendButton);
             Controls.Add(ReadButton);
-            Controls.Add(ConnectButton);
             Controls.Add(ExitButton);
             Name = "SerialData";
             Text = "Serial Data";
@@ -198,18 +172,16 @@
         #endregion
 
         private Button ExitButton;
-        private Button ConnectButton;
         private Button ReadButton;
         private Button SendButton;
         private ComboBox PortsComboBox;
-        private TextBox OutputTextBox;
+        private TextBox TempTextBox;
         private StatusStrip StatusStrip;
         private System.Windows.Forms.Timer StatusTimer;
         private ListBox ComListBox;
-        private CheckBox EnableTimerCheckBox;
         private ToolStripStatusLabel StatusLabel;
         private Button IDButton;
         private Button ADCButton;
-        private Button FramingErrorButton;
+        private HScrollBar ServoScrollBar;
     }
 }
