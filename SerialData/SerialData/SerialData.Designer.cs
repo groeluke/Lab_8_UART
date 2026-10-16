@@ -31,7 +31,6 @@
             components = new System.ComponentModel.Container();
             ExitButton = new Button();
             ReadButton = new Button();
-            SendButton = new Button();
             PortsComboBox = new ComboBox();
             TempTextBox = new TextBox();
             StatusStrip = new StatusStrip();
@@ -46,7 +45,7 @@
             // 
             // ExitButton
             // 
-            ExitButton.Location = new Point(639, 344);
+            ExitButton.Location = new Point(736, 344);
             ExitButton.Name = "ExitButton";
             ExitButton.Size = new Size(149, 65);
             ExitButton.TabIndex = 0;
@@ -56,23 +55,13 @@
             // 
             // ReadButton
             // 
-            ReadButton.Location = new Point(484, 344);
+            ReadButton.Location = new Point(581, 344);
             ReadButton.Name = "ReadButton";
             ReadButton.Size = new Size(149, 65);
             ReadButton.TabIndex = 2;
             ReadButton.Text = "&Read";
             ReadButton.UseVisualStyleBackColor = true;
             ReadButton.Click += ReadButton_Click;
-            // 
-            // SendButton
-            // 
-            SendButton.Location = new Point(329, 344);
-            SendButton.Name = "SendButton";
-            SendButton.Size = new Size(149, 65);
-            SendButton.TabIndex = 3;
-            SendButton.Text = "&Send";
-            SendButton.UseVisualStyleBackColor = true;
-            SendButton.Click += SendButton_Click;
             // 
             // PortsComboBox
             // 
@@ -95,7 +84,7 @@
             StatusStrip.Items.AddRange(new ToolStripItem[] { StatusLabel });
             StatusStrip.Location = new Point(0, 428);
             StatusStrip.Name = "StatusStrip";
-            StatusStrip.Size = new Size(800, 22);
+            StatusStrip.Size = new Size(897, 22);
             StatusStrip.TabIndex = 6;
             StatusStrip.Text = "statusStrip1";
             // 
@@ -115,12 +104,12 @@
             ComListBox.FormattingEnabled = true;
             ComListBox.Location = new Point(209, 12);
             ComListBox.Name = "ComListBox";
-            ComListBox.Size = new Size(579, 304);
+            ComListBox.Size = new Size(676, 304);
             ComListBox.TabIndex = 7;
             // 
             // IDButton
             // 
-            IDButton.Location = new Point(211, 375);
+            IDButton.Location = new Point(463, 375);
             IDButton.Name = "IDButton";
             IDButton.Size = new Size(112, 34);
             IDButton.TabIndex = 9;
@@ -130,7 +119,7 @@
             // 
             // ADCButton
             // 
-            ADCButton.Location = new Point(211, 335);
+            ADCButton.Location = new Point(463, 334);
             ADCButton.Name = "ADCButton";
             ADCButton.Size = new Size(112, 34);
             ADCButton.TabIndex = 11;
@@ -140,10 +129,10 @@
             // 
             // ServoScrollBar
             // 
-            ServoScrollBar.Location = new Point(12, 360);
+            ServoScrollBar.Location = new Point(37, 357);
             ServoScrollBar.Maximum = 180;
             ServoScrollBar.Name = "ServoScrollBar";
-            ServoScrollBar.Size = new Size(168, 39);
+            ServoScrollBar.Size = new Size(395, 39);
             ServoScrollBar.TabIndex = 13;
             ServoScrollBar.Scroll += ServoScrollBar_Scroll;
             // 
@@ -151,7 +140,7 @@
             // 
             AutoScaleDimensions = new SizeF(10F, 25F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(800, 450);
+            ClientSize = new Size(897, 450);
             Controls.Add(ServoScrollBar);
             Controls.Add(ADCButton);
             Controls.Add(IDButton);
@@ -159,7 +148,6 @@
             Controls.Add(StatusStrip);
             Controls.Add(TempTextBox);
             Controls.Add(PortsComboBox);
-            Controls.Add(SendButton);
             Controls.Add(ReadButton);
             Controls.Add(ExitButton);
             Name = "SerialData";
@@ -174,7 +162,6 @@
 
         private Button ExitButton;
         private Button ReadButton;
-        private Button SendButton;
         private ComboBox PortsComboBox;
         private TextBox TempTextBox;
         private StatusStrip StatusStrip;

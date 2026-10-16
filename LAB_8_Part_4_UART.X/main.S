@@ -1,7 +1,7 @@
     ; Luke Groesbeck
     ; RCET3373
     ; UART
-    ; https://github.com/groeluke/Lab_8_UART/tree/main/LAB_8_Part_3_UART.X
+    ; https://github.com/groeluke/Lab_8_UART/tree/main/LAB_8_Part_4_UART.X
     ; Linker code = -Wl,-presetVect=0000h,-pisrVect=0004h,-pcode=0008h
     
 ; PIC16F883 Configuration Bit Settings
@@ -26,35 +26,39 @@
 
 ; config statements should precede project file includes.
 #include <xc.inc>
-rx_byte         EQU 0x70        ;latest received byte
-rx_state        EQU 0x71        ;0=WAIT_START, 1=GET_COMMAND, 2=GET_LENGTH, 3=GET_CHANNEL
-rx_command      EQU 0x72        ;'I' (0x49) or 'A' (0x41)
-reply_pending   EQU 0x73        ;0=none, 1=ID, 2=ADC, 3=framing, 4=overrun
-adc_state       EQU 0x74        ;0=IDLE, 1=BUSY, 2=READY
-adc_high        EQU 0x75        ;ADRESH (top 2 bits of 10-bit result)
-adc_low         EQU 0x76        ;ADRESL (bottom 8 bits)
-tx_length       EQU 0x77        ;total bytes in the reply packet
-tx_count        EQU 0x78        ;how many have already been written to TXREG
-tx_data0        EQU 0x79        ;$          (start byte)
-tx_data1        EQU 0x7A        ;Command    ('I', 'A', or 'E')
-tx_data2        EQU 0x7B        ;Length
-tx_data3        EQU 0x7C        ;Data byte 0
-tx_data4        EQU 0x7D        ;Data byte 1
-tx_data5        EQU 0x7E        ;Data byte 2
-Count_5ms       EQU 0x20        ;overrun error stuff
-Count_50us      EQU 0x21        ;overrun error inner count
+W_TEMP          EQU 0x70        ;W saved during the ISR
+STATUS_TEMP     EQU 0x71        ;STATUS saved during the ISR
+servo_busy      EQU 0x72        ;bit0 = 1 while the servo pulse (RC2) is HIGH
+rx_byte         EQU 0x73        ;latest received byte
+rx_state        EQU 0x74        ;0 WAIT_START, 1 GET_COMMAND, 2 GET_LENGTH, 3 GET_CHANNEL, 4 GET_MATCH_H, 5 GET_MATCH_L
+rx_command      EQU 0x75        ;'I' 0x49, 'A' 0x41, or 'S' 0x53
+reply_pending   EQU 0x76        ;0 none, 1 ID, 2 ADC, 3 servo error, 4 framing, 5 overrun
+adc_state       EQU 0x77        ;0 IDLE, 1 BUSY, 2 READY
+adc_high        EQU 0x78        ;top 2 bits of the 10-bit result
+adc_low         EQU 0x79        ;bottom 8 bits of the 10-bit result
+tx_length       EQU 0x7A        ;bytes in the reply packet
+tx_count        EQU 0x7B        ;bytes already sent
+rx_match_h      EQU 0x7C        ;high byte of an S command, held until the low byte arrives
+servo_next_h    EQU 0x7D        ;saved compare value for the NEXT frame, high byte
+servo_next_l    EQU 0x7E        ;saved compare value for the NEXT frame, low byte
+
+;bank 0 RAM, the reply buffer that only main-loop code touches it
+tx_data0        EQU 0x20        ;$
+tx_data1        EQU 0x21        ;command
+tx_data2        EQU 0x22        ;length
+tx_data3        EQU 0x23        ;data 0
+tx_data4        EQU 0x24        ;data 1
+tx_data5        EQU 0x25        ;data 2
 	
 ;              Required Setup
-;EUSART:
-;reuse Part 2 operation at 9600 baud, asynchronous 8N1
-;ADC:
-;reuse working Lab07 AN0 configuration and routines
-;use VDD/VSS references, FOSC/8, and a right-justified 10-bit result
-;Diagnostic output:
-;retain the receive-service timing output from Part 2
-;Startup:
-;clear parser, reply, ADC, and TX state
-;start with the diagnostic output LOW
+; Packets ('$' 0x24, 'I' 0x49, 'A' 0x41, 'S' 0x53, 'E' 0x45)
+; ID request      24 49 00              reply  24 49 02 33 75
+; ADC request     24 41 01 00           reply  24 41 03 00 HH LL
+; Servo command   24 53 02 MH ML        no reply when valid
+; Servo error     24 45 02 03 01        (compare value outside B3D4 to BBA4)
+; Framing error   24 45 02 01 00        Overrun error  24 45 02 02 00
+; Servo compare = 0xB1E0 + pulse width in us:  500 = B3D4, 1500 = B7BC, 2500 = BBA4
+; RA0 = LM34 on AN0, RA1 = receive-service diagnostic, RC2 = servo output
   
 	
 ; Reset Vector at 0000h. Execution starts here after reset.
@@ -65,59 +69,97 @@ ResetVector:
 ; Interrupt Vector at 0004h. Execution starts here after an interrupt.
 PSECT isrVect,class=CODE,delta=2
 InterruptVector:
+    GOTO    IsrHandler
    
 ; Main code section starts at 0008h. User code goes here.
 PSECT code,class=CODE,delta=2
- 
-; Packets (all binary bytes, '$' = 0x24, 'I' = 0x49, 'A' = 0x41, 'E' = 0x45)
-;   ID request     24 49 00              ID reply     24 49 02 33 75
-;   ADC request    24 41 01 00           ADC reply    24 41 03 00 HH LL
-;   Framing error  24 45 02 01 00        Overrun err  24 45 02 02 00
-; Diagnostic pin is RA1 (AN0 uses RA0 for the potentiometer)
  
 Setup: 
     ;       Bank 3
     BANKSEL ANSEL
     BSF     ANSEL,0       ;set AN0 as an analog
     BCF     ANSEL,1       ;set AN1 as a digital I/O
+    CLRF    ANSELH
     CLRF    BAUDCTL       ;BRG16 = 0 (8-bit baud generator)
     ;       Bank 1
     BANKSEL TXSTA
-    MOVLW   0b00100100    ;TXEN=1, BRGH=1, 8-bit, async
+    MOVLW   0b00100100    ;transmitter on, high-speed baud
     MOVWF   TXSTA
-    MOVLW   25            ;9600 baud @ 4 MHz (actual ? 9615)
+    MOVLW   25            ;9600 baud @ 4 MHz
     MOVWF   SPBRG
-    BSF     TRISC,6       ;TX pin
-    BSF     TRISC,7       ;RX pin
-    BSF     TRISA,0       ;RA0 AN0 input
-    BCF     TRISA,1       ;RA1 diagnostic output
-    MOVLW   0b10000000    ;ADFM=1 (right-justified), VCFG=00 (VDD/VSS)
-    MOVWF   ADCON1
+
+    BSF     TRISC,6       ;TX pin (RC6) as input (peripheral controls it)
+    BSF     TRISC,7       ;RX pin (RC7) as input
+    BCF     TRISC,2       ;RC2 = servo output
+    BSF     TRISA,0       ;RA0 = LM34 input
+    BCF     TRISA,1       ;RA1 = diagnostic pulse output
+
+    MOVLW   0b10000000
+    MOVWF   ADCON1      ;Right justified amd VDD/VSS references
+    
+    MOVLW   0b00000101    ;enable Timer1 and CCP1 interrupts
+    MOVWF   PIE1
     ;       Bank 0
     BANKSEL RCSTA
-    MOVLW   0b10010000    ;enable the serial port and continuous receive
+    MOVLW   0b10010000    ;serial port on + continuous receive
     MOVWF   RCSTA
-    MOVLW   0b01000001    ;ADC clock = Fosc/8, Channel = AN0, ADC turned on
+    MOVLW   0b01000001    ;ADC: Fosc/8, channel AN0, ADC on
     MOVWF   ADCON0
-    CLRF    PORTA         ;start with the diagnostic pin low
-    CLRF    rx_state      ;parser begins looking for a '$'
-    CLRF    rx_command
-    CLRF    reply_pending ;no answer waiting to be sent
-    CLRF    adc_state     ;ADC is idle
-    CLRF    adc_high
-    CLRF    adc_low
-    CLRF    tx_length     ;nothing in the transmit buffer yet
+
+    CLRF    PORTA
+    CLRF    PORTC
+    CLRF    servo_busy
+    CLRF    rx_state
+    CLRF    reply_pending
+    CLRF    adc_state
+    CLRF    tx_length
     CLRF    tx_count
-Main:
-    BSF     PORTA,1       ;set diagnostic
-    BCF     PORTA,1       ;set the dianostic bit low
-    CALL    ServiceRx     ;check the receiver
-    CALL    ServiceReply  ;hand a received byte over to the send side
-    CALL    ServiceTx     ;send it if the transmitter is free
+
+    ;Start the servo at 1500 µs (center position)
+    ;0xB1E0 + 1500 = 0xB7BC
+    MOVLW   0xB7
+    MOVWF   servo_next_h
+    MOVWF   CCPR1H
+    MOVLW   0xBC
+    MOVWF   servo_next_l
+    MOVWF   CCPR1L
+
+    MOVLW   0b00001010    ;CCP1 in compare mode, interrupt on match
+    MOVWF   CCP1CON
+
+    ; Timer1 starts at 0xB1E0 so it overflows every 20 000 µs (20 ms)
+    MOVLW   0xB1
+    MOVWF   TMR1H
+    MOVLW   0xE0
+    MOVWF   TMR1L
+    BCF     PIR1,0        ;clear Timer1 flag
+    BCF     PIR1,2        ;clear CCP1 flag
+    MOVLW   0b00000001    ;Timer1 on, 1:1 prescale, internal clock
+    MOVWF   T1CON
+
+    BSF     INTCON,6      ;allow peripheral interrupts
+    BSF     INTCON,7      ;global interrupts on
     
-; add a 5ms delay to casue over run 
-    ;CAll    Delay5ms
-    GOTO    Main          ;repeat forever
+;Servo pulse ats the highest priority, 
+;While RC2 is high we do nothing in the foreground.
+Main:
+    BTFSC   servo_busy,0  ;is the servo pulse currently HIGH?
+    GOTO    Main          ;if yes wait until it finishes
+
+;Diagnostic pulse on RA1 that shows how often we get to service the UART
+    BSF     PORTA,1
+    BCF     PORTA,1
+
+    CALL    ServiceRx     ;look for received bytes / errors
+    BTFSC   servo_busy,0
+    GOTO    Main
+
+    CALL    ServiceReply   ;build a reply packet if one is waiting
+    BTFSC   servo_busy,0
+    GOTO    Main
+
+    CALL    ServiceTx      ;Send the next byte of a reply if ready
+    GOTO    Main
 ;ServiceRx: Checks for receive errors first.  If a normal byte arrived, 
 ;hands it to the parser.  Returns immediately so the main loop can keep running.
 ServiceRx:
@@ -150,14 +192,14 @@ RxFlush:
     MOVF    RCREG,W       ;throw away whatever is still in the FIFO
     GOTO    RxFlush
 RxOverrunDone:
-    MOVLW   4             ;tell ServiceReply we need an overrun packet
+    MOVLW   5             ;tell ServiceReply we need an overrun packet
     GOTO    QueueError
 
-; Framing error ? read the bad byte (that clears the flag) and queue the
+; Framing error then read the bad byte (that clears the flag) and queue the
 ; framing-error packet.
 RxFraming:
     MOVF    RCREG,W
-    MOVLW   3
+    MOVLW   4
 QueueError:
     MOVWF   reply_pending
     CLRF    rx_state      ;abandon any partial packet we were building
@@ -169,16 +211,38 @@ QueueError:
 ;remember where we left off.
 ParseRxByte:
     MOVF    rx_state,W
+    XORLW   0
     BTFSC   STATUS,2
     GOTO    StateStart
+
+    MOVF    rx_state,W
     XORLW   1
     BTFSC   STATUS,2
     GOTO    StateCommand
+
     MOVF    rx_state,W
     XORLW   2
     BTFSC   STATUS,2
     GOTO    StateLength
-    GOTO    StateChannel  ;only possibility left is state 3
+
+    MOVF    rx_state,W
+    XORLW   3
+    BTFSC   STATUS,2
+    GOTO    StateChannel
+
+    MOVF    rx_state,W
+    XORLW   4
+    BTFSC   STATUS,2
+    GOTO    StateMatchH
+
+    MOVF    rx_state,W
+    XORLW   5
+    BTFSC   STATUS,2
+    GOTO    StateMatchL
+
+    ; Unexpected state: reset parser
+    CLRF    rx_state
+    RETURN
 
 ;Waiting for the magice start byte
 StateStart:
@@ -193,50 +257,65 @@ StateStart:
 ;Waiting for the command letter
 StateCommand:
     MOVF    rx_byte,W
-    XORLW   0x49          ;'I' for device ID?
-    BTFSC   STATUS,2      ;is Rx asking for the ID?
-    GOTO    SaveCmd
-    MOVF    rx_byte,W
-    XORLW   0x41          ;'A' for ADC?
-    BTFSS   STATUS,2      ;is Rx asking for the ADC reading
-    GOTO    ResetParser   ;anything else is ignored
-SaveCmd:
-    MOVF    rx_byte,W
-    MOVWF   rx_command
+    MOVWF   rx_command          ; save it
+    XORLW   0x49                ; 'I'?
+    BTFSC   STATUS,2
+    GOTO    CmdOk
+    MOVF    rx_command,W
+    XORLW   0x41                ; 'A'?
+    BTFSC   STATUS,2
+    GOTO    CmdOk
+    MOVF    rx_command,W
+    XORLW   0x53                ; 'S'?
+    BTFSS   STATUS,2
+    GOTO    ResetParser         ; unknown command
+CmdOk:
     MOVLW   2
-    MOVWF   rx_state      ;next byte should be the length
+    MOVWF   rx_state
     RETURN
 
 ;Waiting for the length byte
 StateLength:
     MOVF    rx_command,W
-    XORLW   0x49          ; was the command 'I'?
-    BTFSS   STATUS,2
-    GOTO    LengthForA
+    XORLW   0x49                ; was it ID?
+    BTFSC   STATUS,2
+    GOTO    LenID
+    MOVF    rx_command,W
+    XORLW   0x53                ; was it Servo?
+    BTFSC   STATUS,2
+    GOTO    LenServo
 
-;   Device-ID request must have length 0
-    MOVF    rx_byte,F
-    BTFSS   STATUS,2
-    GOTO    ResetParser
-    CLRF    rx_state      ;request is complete
-    MOVF    reply_pending,F ;is another answer already waiting?
-    BTFSS   STATUS,2
-    RETURN                ;if yes ignore this request
-    MOVLW   1
-    MOVWF   reply_pending ;queue the ID answer
-    RETURN
-
-LengthForA:
-;   ADC request must have length 1
+    ; Must be ADC ? length must be 1
     MOVF    rx_byte,W
     XORLW   1
     BTFSS   STATUS,2
     GOTO    ResetParser
     MOVLW   3
-    MOVWF   rx_state      ;next (and last) byte is the channel number
+    MOVWF   rx_state            ; next byte is the channel
     RETURN
 
-;Waiting for the channel number (only used by the ADC request)
+LenID:
+    MOVF    rx_byte,F           ; length must be 0
+    BTFSS   STATUS,2
+    GOTO    ResetParser
+    CLRF    rx_state
+    MOVF    reply_pending,F
+    BTFSS   STATUS,2
+    RETURN                      ; already have a reply pending
+    MOVLW   1
+    MOVWF   reply_pending       ; queue ID reply
+    RETURN
+
+LenServo:
+    MOVF    rx_byte,W
+    XORLW   2                   ; length must be 2
+    BTFSS   STATUS,2
+    GOTO    ResetParser
+    MOVLW   4
+    MOVWF   rx_state            ; next byte is match high
+    RETURN
+
+;Waiting for the channel number which only used by the ADC request
 StateChannel:
     CLRF    rx_state      ;packet is finished no matter what
     MOVF    rx_byte,F     ;must be channel 0 (AN0)
@@ -250,14 +329,75 @@ StateChannel:
     CLRF    adc_state     ;make sure the conversion starts from idle
     RETURN
 
-ResetParser:
-    CLRF    rx_state      ;go back to looking for a new '$'
+; Servo ? high byte of the compare value
+StateMatchH:
+    MOVF    rx_byte,W
+    MOVWF   rx_match_h
+    MOVLW   5
+    MOVWF   rx_state
     RETURN
+
+;Servo ? low byte arrived, now validate the 16-bit value
+StateMatchL:
+    CLRF    rx_state
+
+    ; Check that the value is between 0xB3D4 and 0xBBA4 (500?2500 µs)
+    ; First check minimum
+    MOVF    rx_match_h,W
+    SUBLW   0xB3                ; 0xB3 - high
+    BTFSS   STATUS,0            ; high > 0xB3?
+    GOTO    CheckMax
+    BTFSS   STATUS,2            ; high == 0xB3?
+    GOTO    ServoBad            ; high < 0xB3 too small
+    ; high == 0xB3 and low must be >= 0xD4
+    MOVF    rx_byte,W
+    SUBLW   0xD3
+    BTFSC   STATUS,0            ; low <= 0xD3?
+    GOTO    ServoBad
+
+CheckMax:
+    MOVF    rx_match_h,W
+    SUBLW   0xBB                ; 0xBB - high
+    BTFSS   STATUS,0            ; high > 0xBB?
+    GOTO    ServoBad
+    BTFSS   STATUS,2            ; high == 0xBB?
+    GOTO    ServoGood           ; high < 0xBB ? good
+    ; high == 0xBB ? low must be <= 0xA4
+    MOVF    rx_byte,W
+    SUBLW   0xA4
+    BTFSS   STATUS,0            ; low > 0xA4?
+    GOTO    ServoBad
+
+; Value is valid ? save it for the NEXT frame (with interrupts off)
+ServoGood:
+    BCF     INTCON,7            ; turn interrupts off
+    BTFSC   INTCON,7            ; make sure they are really off
+    GOTO    $-2
+    MOVF    rx_match_h,W
+    MOVWF   servo_next_h
+    MOVF    rx_byte,W
+    MOVWF   servo_next_l
+    BSF     INTCON,7            ; interrupts back on
+    RETURN                      ; valid S command has no reply
+
+; Value was outside the legal range
+ServoBad:
+    MOVF    reply_pending,F
+    BTFSS   STATUS,2
+    RETURN
+    MOVLW   3
+    MOVWF   reply_pending       ; queue servo error packet
+    RETURN
+
+ResetParser:
+    CLRF    rx_state
+    RETURN
+
 
 ;ServiceReply: When the previous answer has been completely sent and a new 
 ;one is waiting, this routine builds the complete packet in the six-byte buffer.
 ServiceReply:
-;   Don?t start a new packet until the old one has finished leaving the UART
+;   Don't start a new packet until the old one has finished leaving the UART
     MOVF    tx_length,W
     SUBWF   tx_count,W
     BTFSS   STATUS,0
@@ -267,84 +407,101 @@ ServiceReply:
     BTFSC   STATUS,2
     RETURN                  ;nothing waiting
 
-    XORLW   3
-    BTFSC   STATUS,2
-    GOTO    BuildFraming
-    MOVF    reply_pending,W
-    XORLW   4
-    BTFSC   STATUS,2
-    GOTO    BuildOverrun
-    MOVF    reply_pending,W
+; Decide which packet to build
     XORLW   1
     BTFSC   STATUS,2
     GOTO    BuildId
-
+    MOVF    reply_pending,W
+    XORLW   2
+    BTFSC   STATUS,2
+    GOTO    BuildAdcWait
+    MOVF    reply_pending,W
+    XORLW   3
+    BTFSC   STATUS,2
+    GOTO    BuildServoErr
+    MOVF    reply_pending,W
+    XORLW   4
+    BTFSC   STATUS,2
+    GOTO    BuildFraming
+    GOTO    BuildOverrun        ; must be 5
+    
 ;   Must be an ADC request and keep working on the conversion until it finishes
+BuildAdcWait:
     CALL    ServiceAdc
     MOVF    adc_state,W
-    XORLW   2               ;is the result ready?
+    XORLW   2
     BTFSS   STATUS,2
-    RETURN                  ;not yet ? try again next time around the main loop
+    RETURN                      ; conversion not finished yet
     GOTO    BuildAdc
 
-;Device ID answer:  $ I 2 0x33 0x75
+; Device ID reply: 24 49 02 33 75
 BuildId:
     MOVLW   0x24
-    MOVWF   tx_data0         ;start byte
+    MOVWF   tx_data0
     MOVLW   0x49
-    MOVWF   tx_data0+1       ;command 'I'
+    MOVWF   tx_data1
     MOVLW   0x02
-    MOVWF   tx_data0+2       ;two data bytes follow
+    MOVWF   tx_data2
     MOVLW   0x33
-    MOVWF   tx_data0+3
+    MOVWF   tx_data3
     MOVLW   0x75
-    MOVWF   tx_data0+4
+    MOVWF   tx_data4
     MOVLW   5
     GOTO    FinishBuild
 
-;ADC answer:  $ A 3 0x00 HH LL
+; ADC / temperature reply: 24 41 03 00 HH LL
 BuildAdc:
     MOVLW   0x24
     MOVWF   tx_data0
     MOVLW   0x41
-    MOVWF   tx_data0+1
+    MOVWF   tx_data1
     MOVLW   0x03
-    MOVWF   tx_data0+2       ;three data bytes
-    CLRF    tx_data0+3       ;channel 0
+    MOVWF   tx_data2
+    CLRF    tx_data3            ; channel 0
     MOVF    adc_high,W
-    MOVWF   tx_data0+4
+    MOVWF   tx_data4
     MOVF    adc_low,W
-    MOVWF   tx_data0+5
-    CLRF    adc_state       ;ready for the next conversion request
+    MOVWF   tx_data5
+    CLRF    adc_state
     MOVLW   6
     GOTO    FinishBuild
 
-;Framing-error answer
+; Servo range error: 24 45 02 03 01
+BuildServoErr:
+    MOVLW   0x03
+    MOVWF   tx_data3
+    MOVLW   0x01
+    MOVWF   tx_data4
+    GOTO    BuildErrCommon
+
+; Framing error: 24 45 02 01 00
 BuildFraming:
-    MOVLW   0x01            ;error code 1
-    GOTO    BuildError
+    MOVLW   0x01
+    MOVWF   tx_data3
+    CLRF    tx_data4
+    GOTO    BuildErrCommon
 
-;Overrun-error answer
+; Overrun error: 24 45 02 02 00
 BuildOverrun:
-    MOVLW   0x02            ;error code 2
+    MOVLW   0x02
+    MOVWF   tx_data3
+    CLRF    tx_data4
 
-BuildError:
-    MOVWF   tx_data0+3       ;the error code goes in the third data byte
+BuildErrCommon:
     MOVLW   0x24
     MOVWF   tx_data0
     MOVLW   0x45
-    MOVWF   tx_data0+1       ;command 'E'
+    MOVWF   tx_data1
     MOVLW   0x02
-    MOVWF   tx_data0+2       ;two data bytes
-    CLRF    tx_data0+4       ;detail byte is always zero
+    MOVWF   tx_data2
     MOVLW   5
 
 FinishBuild:
-    MOVWF   tx_length       ;remember how long the packet is
-    CLRF    tx_count        ;start sending from the first byte
-    CLRF    reply_pending   ;this answer is now in the buffer, so clear the flag
+    MOVWF   tx_length
+    CLRF    tx_count
+    CLRF    reply_pending
     RETURN
-
+    
 ;ServiceAdc: Starts a conversion on one pass through the main 
 ;loop and collects the result on a later pass.  Never sits and waits.
 ServiceAdc:
@@ -399,29 +556,47 @@ ServiceTx:
     INCF    tx_count,F      ;one more byte has been queued
     RETURN
     
-;Delay 5ms is only here to cause the overrun error,if you want to see the
-;over run error remove the ";" in main for the call 5ms delay
-Delay5ms:
-    MOVLW   0x5E
-    MOVWF   Count_5ms
-    
-Delay5ms_Loop:
-    Call    Delay50us_Loop
-    DECFSZ  Count_5ms
-    GOTO    Delay5ms_Loop
-    
-    MOVLW   0x04
-    MOVWF   Count_5ms
+;The ISRHandler was pulled from the servo lab and handles everything
+IsrHandler:
+    MOVWF   W_TEMP              ; save W
+    SWAPF   STATUS,W
+    MOVWF   STATUS_TEMP         ; save STATUS
 
-    DECFSZ  Count_5ms
-    GOTO    $-1
-    RETURN
-Delay50us_Loop:
-    MOVLW   0x0F            ;1 Tcy move W=15 to count
-    MOVWF   Count_50us      ;1 Tcy make count equal 15
-                            ;Delay loop is equals 44 Tcy when count is 15         
-    DECFSZ  Count_50us,1    ;1 Tcy if not zero, 2 Tcy if zero
-    GOTO    $-1             ;2 Tcy delay runs 15 times before skiping
+    BANKSEL PIR1
+    BTFSC   PIR1,0              ; Timer1 overflow?
+    CALL    Service_Timer1
+    BTFSC   PIR1,2              ; CCP1 match?
+    CALL    Service_CCP1
+
+    SWAPF   STATUS_TEMP,W
+    MOVWF   STATUS
+    SWAPF   W_TEMP,F
+    SWAPF   W_TEMP,W
+    RETFIE
+
+; New 20 ms frame begins
+Service_Timer1:
+    BCF     PIR1,0
+    MOVLW   0xB1
+    MOVWF   TMR1H               ; reload for next 20 ms
+    MOVLW   0xE0
+    MOVWF   TMR1L
+
+    BSF     PORTC,2             ; start the servo pulse (RC2 HIGH)
+    BSF     servo_busy,0
+
+    ; Load the compare value that was saved by a previous S command
+    MOVF    servo_next_h,W
+    MOVWF   CCPR1H
+    MOVF    servo_next_l,W
+    MOVWF   CCPR1L
     RETURN
 
+; Compare match ? end of the servo pulse
+Service_CCP1:
+    BCF     PIR1,2
+    BCF     PORTC,2             ; RC2 LOW
+    BCF     servo_busy,0
+    RETURN
+    
     END
