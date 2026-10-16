@@ -9,10 +9,12 @@ namespace SerialData
         public SerialData()
         {
             InitializeComponent();
-            VerifySerialPort();
-            StatusTimer.Interval = 20;             // timer ticks every 20 ms
-            StatusTimer.Tick += StatusTimer_Tick;  // connect the timer to its method
-            StatusTimer.Start();                   // start the timer
+            StatusTimer.Interval = 20;
+            StatusTimer.Tick += StatusTimer_Tick;
+            StatusTimer.Start();
+
+            // start looking for the PIC
+            DiscoverPic();              // start the timer
         }
 
         SerialPort _serialPort = new SerialPort();
@@ -21,48 +23,70 @@ namespace SerialData
         bool waiting = false;              // true while we wait for a reply
         DateTime deadline;                 // when we give up waiting
 
+        bool picFound = false;
+        string verifiedPort = "";
+        DateTime nextTempTime = DateTime.Now;
 
-        void VerifySerialPort()
+        // Put your measured reference voltage here
+        const double VREF = 5.00;
+
+
+        void DiscoverPic()
         {
-            //send the bytes to check ports and find the one that is connected to the PIC
+            picFound = false;
+            verifiedPort = "";
+            StatusLabel.Text = "Searching...";
+
             foreach (string port in SerialPort.GetPortNames())
             {
-                _serialPort.PortName = port;
-                _serialPort.BaudRate = 9600;
-                _serialPort.DataBits = 8;
-                _serialPort.Parity = Parity.None;
-                _serialPort.StopBits = StopBits.One;
                 try
                 {
+                    _serialPort.Close();
+                    _serialPort.PortName = port;
+                    _serialPort.BaudRate = 9600;
+                    _serialPort.DataBits = 8;
+                    _serialPort.Parity = Parity.None;
+                    _serialPort.StopBits = StopBits.One;
+                    _serialPort.ReadTimeout = 200;
                     _serialPort.Open();
-                    // Send a test command to the PIC
-                    byte[] testCommand = { 0x24, 0x49, 0x00 }; // Device ID request
-                    _serialPort.Write(testCommand, 0, testCommand.Length);
-                    // Wait for a response
-                    System.Threading.Thread.Sleep(100); // wait for 100 ms
-                    if (_serialPort.BytesToRead > 0)
+
+                    // Send ID request
+                    byte[] id = { 0x24, 0x49, 0x00 };
+                    _serialPort.DiscardInBuffer();
+                    _serialPort.Write(id, 0, 3);
+
+                    System.Threading.Thread.Sleep(120);
+
+                    if (_serialPort.BytesToRead >= 5)
                     {
-                        byte[] response = new byte[_serialPort.BytesToRead];
-                        _serialPort.Read(response, 0, response.Length);
-                        if (response.Length >= 5 && response[1] == 0x49) // Check for ID reply
+                        byte[] reply = new byte[_serialPort.BytesToRead];
+                        _serialPort.Read(reply, 0, reply.Length);
+
+                        // Exact match: 24 49 02 33 75
+                        if (reply[0] == 0x24 && reply[1] == 0x49 &&
+                            reply[2] == 0x02 && reply[3] == 0x33 && reply[4] == 0x75)
                         {
-                            PortsComboBox.Items.Add(port);
+                            verifiedPort = port;
+                            picFound = true;
+                            StatusLabel.Text = "Connected: " + port;
+                            AddToList("RX", reply, 5, "ID OK");
+
+                            // Send centered 90° once
+                            SendServo(90);
+                            nextTempTime = DateTime.Now.AddSeconds(1);
+                            return;
                         }
                     }
+                    _serialPort.Close();
                 }
-                catch (Exception)
+                catch
                 {
-                    // Ignore any exceptions and continue checking other ports
-                }
-                finally
-                {
-                    if (_serialPort.IsOpen)
-                    {
-                        _serialPort.Close();
-                    }
+                    try { _serialPort.Close(); } catch { }
                 }
             }
 
+            StatusLabel.Text = "COM ERR";
+            nextTempTime = DateTime.Now.AddSeconds(1);   // try again later
         }
 
 
