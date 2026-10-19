@@ -88,7 +88,7 @@ Setup:
     MOVLW   25            ;9600 baud @ 4 MHz
     MOVWF   SPBRG
 
-    BSF     TRISC,6       ;TX pin (RC6) as input (peripheral controls it)
+    BSF     TRISC,6       ;TX pin (RC6) as output 
     BSF     TRISC,7       ;RX pin (RC7) as input
     BCF     TRISC,2       ;RC2 = servo output
     BSF     TRISA,0       ;RA0 = LM34 input
@@ -592,7 +592,7 @@ Service_Timer1:
     MOVWF   CCPR1L
     RETURN
 
-; Compare match ? end of the servo pulse
+; Compare match end of the servo pulse
 Service_CCP1:
     BCF     PIR1,2
     BCF     PORTC,2             ; RC2 LOW
