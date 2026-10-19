@@ -40,7 +40,9 @@
             IDButton = new Button();
             ADCButton = new Button();
             ServoScrollBar = new HScrollBar();
+            Servo1TrackBar = new TrackBar();
             StatusStrip.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)Servo1TrackBar).BeginInit();
             SuspendLayout();
             // 
             // ExitButton
@@ -104,7 +106,7 @@
             ComListBox.FormattingEnabled = true;
             ComListBox.Location = new Point(209, 12);
             ComListBox.Name = "ComListBox";
-            ComListBox.Size = new Size(676, 304);
+            ComListBox.Size = new Size(676, 279);
             ComListBox.TabIndex = 7;
             // 
             // IDButton
@@ -129,18 +131,30 @@
             // 
             // ServoScrollBar
             // 
-            ServoScrollBar.Location = new Point(37, 357);
+            ServoScrollBar.Location = new Point(37, 375);
             ServoScrollBar.Maximum = 180;
             ServoScrollBar.Name = "ServoScrollBar";
-            ServoScrollBar.Size = new Size(395, 39);
+            ServoScrollBar.Size = new Size(395, 21);
             ServoScrollBar.TabIndex = 13;
             ServoScrollBar.Scroll += ServoScrollBar_Scroll;
+            // 
+            // Servo1TrackBar
+            // 
+            Servo1TrackBar.LargeChange = 45;
+            Servo1TrackBar.Location = new Point(12, 303);
+            Servo1TrackBar.Maximum = 180;
+            Servo1TrackBar.Name = "Servo1TrackBar";
+            Servo1TrackBar.Size = new Size(420, 69);
+            Servo1TrackBar.TabIndex = 14;
+            Servo1TrackBar.TickFrequency = 15;
+            Servo1TrackBar.Value = 90;
             // 
             // SerialData
             // 
             AutoScaleDimensions = new SizeF(10F, 25F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(897, 450);
+            Controls.Add(Servo1TrackBar);
             Controls.Add(ServoScrollBar);
             Controls.Add(ADCButton);
             Controls.Add(IDButton);
@@ -154,6 +168,7 @@
             Text = "Serial Data";
             StatusStrip.ResumeLayout(false);
             StatusStrip.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)Servo1TrackBar).EndInit();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -171,5 +186,6 @@
         private Button IDButton;
         private Button ADCButton;
         private HScrollBar ServoScrollBar;
+        private TrackBar Servo1TrackBar;
     }
 }

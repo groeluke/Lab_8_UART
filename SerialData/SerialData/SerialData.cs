@@ -32,6 +32,8 @@ namespace SerialData
         {
             InitializeComponent();
 
+            Servo1TrackBar.ValueChanged += Servo1TrackBar_ValueChanged;
+
             StatusTimer.Stop();
             StatusTimer.Interval = 50;
 
@@ -52,6 +54,7 @@ namespace SerialData
             // The timer will search automatically.
             StatusTimer.Start();
         }
+
 
         // ------------------------------------------------
         // MAIN TIMER
@@ -536,7 +539,7 @@ namespace SerialData
             if (picFound)
                 StatusLabel.Text = "Connected: " + verifiedPort;
             else
-                StatusLabel.Text = "Disconnected - Searching...";
+                StatusLabel.Text = "COM ERR";
         }
 
         private void AddLog(string message)
@@ -635,5 +638,13 @@ namespace SerialData
 
             base.OnFormClosed(e);
         }
+
+        private void Servo1TrackBar_ValueChanged(object? sender, EventArgs e)
+        {
+            int degrees = Servo1TrackBar.Value;
+            Text = "Serial Data - Servo: " + degrees + "°";
+            SendServo(degrees);
+        }
+
     }
 }

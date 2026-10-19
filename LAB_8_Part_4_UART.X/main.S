@@ -329,7 +329,7 @@ StateChannel:
     CLRF    adc_state     ;make sure the conversion starts from idle
     RETURN
 
-; Servo ? high byte of the compare value
+; Servo forhigh byte of the compare value
 StateMatchH:
     MOVF    rx_byte,W
     MOVWF   rx_match_h
@@ -337,7 +337,7 @@ StateMatchH:
     MOVWF   rx_state
     RETURN
 
-;Servo ? low byte arrived, now validate the 16-bit value
+;Servo for low byte arrived, now validate the 16-bit value
 StateMatchL:
     CLRF    rx_state
 
@@ -362,7 +362,7 @@ CheckMax:
     GOTO    ServoBad
     BTFSS   STATUS,2            ; high == 0xBB?
     GOTO    ServoGood           ; high < 0xBB ? good
-    ; high == 0xBB ? low must be <= 0xA4
+    ; high == 0xBB then low must be <= 0xA4
     MOVF    rx_byte,W
     SUBLW   0xA4
     BTFSS   STATUS,0            ; low > 0xA4?
@@ -407,7 +407,7 @@ ServiceReply:
     BTFSC   STATUS,2
     RETURN                  ;nothing waiting
 
-; Decide which packet to build
+;   Decide which packet to build
     XORLW   1
     BTFSC   STATUS,2
     GOTO    BuildId
