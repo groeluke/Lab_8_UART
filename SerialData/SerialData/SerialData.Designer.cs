@@ -108,6 +108,7 @@
             ComListBox.Name = "ComListBox";
             ComListBox.Size = new Size(676, 279);
             ComListBox.TabIndex = 7;
+            ComListBox.SelectedIndexChanged += ComListBox_SelectedIndexChanged;
             // 
             // IDButton
             // 

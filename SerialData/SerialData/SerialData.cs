@@ -41,7 +41,7 @@ namespace SerialData
             TempTextBox.Text = "--- °F";
 
             PortsComboBox.DropDownStyle =
-                ComboBoxStyle.DropDownList;
+            ComboBoxStyle.DropDownList;
 
             ServoScrollBar.Minimum = 0;
             ServoScrollBar.Maximum = 180;
@@ -56,10 +56,7 @@ namespace SerialData
         }
 
 
-        // ------------------------------------------------
         // MAIN TIMER
-        // ------------------------------------------------
-
         private async void StatusTimer_Tick(object sender, EventArgs e)
         {
             if (timerBusy)
@@ -126,10 +123,7 @@ namespace SerialData
             }
         }
 
-        // ------------------------------------------------
         // FIND THE PIC AUTOMATICALLY
-        // ------------------------------------------------
-
         private async Task DiscoverPic()
         {
             if (discovering)
@@ -274,10 +268,7 @@ namespace SerialData
             }
         }
 
-        // ------------------------------------------------
         // SEND REQUESTS THAT EXPECT A REPLY
-        // ------------------------------------------------
-
         private void SendRequest(byte[] packet, string meaning)
         {
             if (!picFound || !serialPort.IsOpen || waiting)
@@ -300,10 +291,7 @@ namespace SerialData
             }
         }
 
-        // ------------------------------------------------
         // SERVO
-        // ------------------------------------------------
-
         private void SendServo(int degrees)
         {
             if (!picFound || !serialPort.IsOpen)
@@ -348,10 +336,8 @@ namespace SerialData
             }
         }
 
-        // ------------------------------------------------
-        // RECEIVE AND PROCESS SERIAL DATA
-        // ------------------------------------------------
 
+        // RECEIVE AND PROCESS SERIAL DATA
         private void ReadSerialData()
         {
             try
@@ -646,5 +632,9 @@ namespace SerialData
             SendServo(degrees);
         }
 
+        private void ComListBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+
+        }
     }
 }
