@@ -32,22 +32,22 @@ namespace SerialData
         {
             InitializeComponent();
 
-            Servo1TrackBar.ValueChanged += Servo1TrackBar_ValueChanged;
+            //Servo1TrackBar.ValueChanged += Servo1TrackBar_ValueChanged;
 
             StatusTimer.Stop();
             StatusTimer.Interval = 50;
 
-            TempTextBox.ReadOnly = true;
-            TempTextBox.Text = "--- °F";
+            AddressTextBox.ReadOnly = true;
+            AddressTextBox.Text = "--- °F";
 
-            PortsComboBox.DropDownStyle =
+            OperationComboBox.DropDownStyle =
             ComboBoxStyle.DropDownList;
 
-            ServoScrollBar.Minimum = 0;
-            ServoScrollBar.Maximum = 180;
-            ServoScrollBar.SmallChange = 1;
-            ServoScrollBar.LargeChange = 1;
-            ServoScrollBar.Value = 90;
+            //ServoScrollBar.Minimum = 0;
+            //ServoScrollBar.Maximum = 180;
+            //ServoScrollBar.SmallChange = 1;
+            //ServoScrollBar.LargeChange = 1;
+            //ServoScrollBar.Value = 90;
 
             StatusLabel.Text = "Searching for PIC...";
 
@@ -226,9 +226,9 @@ namespace SerialData
                         waiting = false;
                         rxBuffer.Clear();
 
-                        PortsComboBox.Items.Clear();
-                        PortsComboBox.Items.Add(name);
-                        PortsComboBox.SelectedIndex = 0;
+                        OperationComboBox.Items.Clear();
+                        OperationComboBox.Items.Add(name);
+                        OperationComboBox.SelectedIndex = 0;
 
                         AddEvent("PIC verified on " + name);
 
@@ -256,7 +256,7 @@ namespace SerialData
                 {
                     picFound = false;
                     verifiedPort = "";
-                    TempTextBox.Text = "--- °F";
+                    AddressTextBox.Text = "--- °F";
                     nextSearchTime =
                         DateTime.Now.AddSeconds(1);
                 }
@@ -291,7 +291,7 @@ namespace SerialData
             }
         }
 
-        // SERVO
+        // SERVO - not used in lab 10
         private void SendServo(int degrees)
         {
             if (!picFound || !serialPort.IsOpen)
@@ -435,7 +435,7 @@ namespace SerialData
                     double volts = adc * VREF / 1024.0;
                     double tempF = volts / 0.010;
 
-                    TempTextBox.Text =
+                    AddressTextBox.Text =
                         tempF.ToString("F1") + " °F";
 
                     return "ADC=" + adc +
@@ -481,8 +481,8 @@ namespace SerialData
             lastServoDegrees = -1;
             rxBuffer.Clear();
 
-            TempTextBox.Text = "--- °F";
-            PortsComboBox.SelectedIndex = -1;
+            AddressTextBox.Text = "--- °F";
+            OperationComboBox.SelectedIndex = -1;
             UpdateStatus();
 
             try
@@ -593,7 +593,7 @@ namespace SerialData
                 "Manual ADC request");
         }
 
-        private void IDButton_Click(object sender, EventArgs e)
+        private void SendButton_Click(object sender, EventArgs e)
         {
             SendRequest(
                 new byte[] { 0x24, 0x49, 0x00 },
@@ -604,11 +604,11 @@ namespace SerialData
         private void ServoScrollBar_Scroll(
             object sender, ScrollEventArgs e)
         {
-            int degrees = ServoScrollBar.Value;
+            //int degrees = ServoScrollBar.Value;
 
-            Text = "Serial Data - Servo: " + degrees + "°";
+            //Text = "Serial Data - Servo: " + degrees + "°";
 
-            SendServo(degrees);
+            //SendServo(degrees);
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
@@ -627,9 +627,9 @@ namespace SerialData
 
         private void Servo1TrackBar_ValueChanged(object? sender, EventArgs e)
         {
-            int degrees = Servo1TrackBar.Value;
-            Text = "Serial Data - Servo: " + degrees + "°";
-            SendServo(degrees);
+            //int degrees = Servo1TrackBar.Value;
+            //Text = "Serial Data - Servo: " + degrees + "°";
+            //SendServo(degrees);
         }
 
         private void ComListBox_SelectedIndexChanged(object sender, EventArgs e)
