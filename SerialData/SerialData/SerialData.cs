@@ -1,63 +1,87 @@
-using System;
-using System.Collections.Generic;
 using System.IO.Ports;
-using System.Linq;
-using System.Threading.Tasks;
-using System.Windows.Forms;
+using System.Text;
+using System.Text.Json;
 
 namespace SerialData
 {
     public partial class SerialData : Form
     {
-        private SerialPort serialPort = new SerialPort();
-        private List<byte> rxBuffer = new List<byte>();
-        private bool picFound = false;
-        private bool waiting = false;
-        private DateTime replyDeadline;
-        private DateTime nextTempTime;
-        private DateTime nextSearchTime;
-
+        // Connection state
+        private SerialPort? serialPort;
+        private readonly List<byte> rxBuffer = new List<byte>();
+        private bool bridgeFound = false;
         private bool discovering = false;
         private bool timerBusy = false;
-        private bool startupServoSent = false;
-
+        private bool everConnected = false;
         private string verifiedPort = "";
+        private string currentRequest = "";
+        private DateTime nextSearchTime = DateTime.MinValue;
+        private DateTime nextIdentityCheck = DateTime.MinValue;
+        private readonly HashSet<string> reportedPorts = new HashSet<string>();
 
-        private int lastServoDegrees = -1;
+        // Only one request may be on the serial link at a time.
+        private readonly SemaphoreSlim requestLock = new SemaphoreSlim(1, 1);
 
-        // Change this to your measured reference voltage.
-        private const double VREF = 5.00;
+        private static readonly byte[] IdentityFrame = { 0x24, 0x49, 0x00 };
+        private static readonly byte[] IdentityReply = { 0x24, 0x49, 0x02, 0x33, 0x75 };
+        private const int ReplyTimeoutMs = 500;
+        private bool scanning = false;
+        private List<SavedCommand> savedCommands = new List<SavedCommand>();
+
+        // Saved commands are kept in your Documents folder so they survive restarts.
+        private readonly string savedFilePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "I2CBridgeSaved.json");
+
+        // The log file is saved in your Documents folder.
+        private readonly string logFilePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "I2CBridgeLog.txt");
 
         public SerialData()
         {
             InitializeComponent();
 
-            //Servo1TrackBar.ValueChanged += Servo1TrackBar_ValueChanged;
+            OperationComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            OperationComboBox.Items.AddRange(
+                new object[] { "Identity", "Probe", "Write", "Read", "Raw frame" });
+            OperationComboBox.SelectedIndex = 0;
 
-            StatusTimer.Stop();
-            StatusTimer.Interval = 50;
+            ModeComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            ModeComboBox.Items.AddRange(new object[] { "Hex", "Text (UTF-8)" });
+            ModeComboBox.SelectedIndex = 0;
 
-            AddressTextBox.ReadOnly = true;
-            AddressTextBox.Text = "--- °F";
+            AddressTextBox.PlaceholderText = "Address (hex, e.g. 20)";
+            DataTextBox.PlaceholderText = "Write data (hex 01 41, or text)";
+            RawFrameTextBox.PlaceholderText = "Raw frame (hex)";
+            SaveNameTextBox.PlaceholderText = "Name";
 
-            OperationComboBox.DropDownStyle =
-            ComboBoxStyle.DropDownList;
+            CountNumeric.Minimum = 0;
+            CountNumeric.Maximum = 255;
+            PreviewTextBox.ReadOnly = true;
+            WarningLabel.ForeColor = Color.Firebrick;
+            WarningLabel.Text = "";
+            ScanStatusLabel.Text = "";
+            ComListBox.HorizontalScrollbar = true;
 
-            //ServoScrollBar.Minimum = 0;
-            //ServoScrollBar.Maximum = 180;
-            //ServoScrollBar.SmallChange = 1;
-            //ServoScrollBar.LargeChange = 1;
-            //ServoScrollBar.Value = 90;
+            // Update the preview whenever an input changes.
+            OperationComboBox.SelectedIndexChanged += (s, e) => UpdatePreview();
+            ModeComboBox.SelectedIndexChanged += (s, e) => UpdatePreview();
+            AddressTextBox.TextChanged += (s, e) => UpdatePreview();
+            DataTextBox.TextChanged += (s, e) => UpdatePreview();
+            CountNumeric.ValueChanged += (s, e) => UpdatePreview();
+            RawFrameTextBox.TextChanged += (s, e) => UpdatePreview();
 
-            StatusLabel.Text = "Searching for PIC...";
+            LogEvent("Application started. Log file: " + logFilePath);
+            UpdateStatus();
+            UpdatePreview();
 
-            // The timer will search automatically.
+            StatusTimer.Interval = 100;
             StatusTimer.Start();
         }
 
-
-        // MAIN TIMER
-        private async void StatusTimer_Tick(object sender, EventArgs e)
+        // MAIN TIMER: connection check, identity check, reconnect
+        private async void StatusTimer_Tick(object? sender, EventArgs e)
         {
             if (timerBusy)
                 return;
@@ -66,56 +90,35 @@ namespace SerialData
 
             try
             {
-                if (picFound)
+                if (bridgeFound)
                 {
-                    // Check whether Windows still lists the PIC's COM port.
-                    bool portExists = SerialPort.GetPortNames()
-                        .Any(p => string.Equals(
-                            p, verifiedPort,
+                    bool portExists = SerialPort.GetPortNames().Any(p =>
+                        string.Equals(p, verifiedPort,
                             StringComparison.OrdinalIgnoreCase));
 
                     if (!portExists)
                     {
-                        DisconnectPic();
+                        Disconnect("COM port is no longer present");
                     }
-                    else
+                    else if (DateTime.Now >= nextIdentityCheck)
                     {
-                        ReadSerialData();
-
-                        // Check whether communication failed.
-                        if (picFound && waiting &&
-                            DateTime.Now >= replyDeadline)
-                        {
-                            DisconnectPic();
-                        }
-
-                        // Request temperature every second.
-                        if (picFound && !waiting &&
-                            DateTime.Now >= nextTempTime)
-                        {
-                            SendRequest(
-                                new byte[] { 0x24, 0x41, 0x01, 0x00 },
-                                "Automatic temperature request");
-
-                            nextTempTime =
-                                DateTime.Now.AddSeconds(1);
-                        }
+                        nextIdentityCheck = DateTime.Now.AddSeconds(1);
+                        await IdentityCheckAsync();
                     }
                 }
 
-                // Automatically search again after disconnecting.
-                if (!picFound && !discovering &&
+                if (!bridgeFound && !discovering &&
                     DateTime.Now >= nextSearchTime)
                 {
-                    await DiscoverPic();
+                    await DiscoverBridgeAsync();
                 }
             }
             catch (Exception ex)
             {
-                AddEvent("Connection check failed: " + ex.Message);
+                LogEvent("Connection check failed: " + ex.Message);
 
-                if (picFound)
-                    DisconnectPic();
+                if (bridgeFound)
+                    Disconnect("exception in connection check");
             }
             finally
             {
@@ -123,143 +126,108 @@ namespace SerialData
             }
         }
 
-        // FIND THE PIC AUTOMATICALLY
-        private async Task DiscoverPic()
+        private async Task IdentityCheckAsync()
+        {
+            // skipIfBusy: if another request is active, the check is deferred.
+            var result = await SendAndWaitAsync(
+                IdentityFrame, "Automatic identity check", true);
+
+            if (!result.Sent)
+                return;
+
+            if (result.Reply == null ||
+                !result.Reply.SequenceEqual(IdentityReply))
+            {
+                Disconnect("no valid reply to the automatic identity check");
+            }
+        }
+
+        // FIND THE BRIDGE: accept a port only after the exact identity reply
+        private async Task DiscoverBridgeAsync()
         {
             if (discovering)
                 return;
 
             discovering = true;
-            bool found = false;
 
             try
             {
-                string[] ports = SerialPort.GetPortNames();
-
-                foreach (string name in ports)
+                foreach (string name in SerialPort.GetPortNames())
                 {
+                    CloseAndDispose();
+
                     try
                     {
-                        ClosePort();
-
-                        // Recreate the serial port after a disconnect.
-                        if (serialPort == null)
-                            serialPort = new SerialPort();
-
-                        serialPort.PortName = name;
-                        serialPort.BaudRate = 9600;
-                        serialPort.DataBits = 8;
-                        serialPort.Parity = Parity.None;
-                        serialPort.StopBits = StopBits.One;
+                        serialPort = new SerialPort(
+                            name, 9600, Parity.None, 8, StopBits.One);
                         serialPort.Handshake = Handshake.None;
                         serialPort.ReadTimeout = 100;
                         serialPort.WriteTimeout = 250;
-
                         serialPort.Open();
                         serialPort.DiscardInBuffer();
                         serialPort.DiscardOutBuffer();
-
                         rxBuffer.Clear();
 
-                        byte[] idRequest = { 0x24, 0x49, 0x00 };
-                        serialPort.Write(
-                            idRequest, 0, idRequest.Length);
+                        serialPort.Write(IdentityFrame, 0, IdentityFrame.Length);
+                        LogFrame(name, "TX", IdentityFrame,
+                            "Discovery identity request");
 
-                        AddLog(name, "TX", idRequest,
-                            "PIC ID request");
+                        bool valid = false;
+                        DateTime end =
+                            DateTime.Now.AddMilliseconds(ReplyTimeoutMs);
 
-                        DateTime endTime =
-                            DateTime.Now.AddMilliseconds(500);
-
-                        bool validId = false;
-
-                        while (DateTime.Now < endTime)
+                        while (DateTime.Now < end && !valid)
                         {
-                            while (serialPort.IsOpen &&
-                                   serialPort.BytesToRead > 0)
+                            ReadAvailable();
+
+                            while (TryExtractPacket(rxBuffer, out byte[] packet))
                             {
-                                int count = serialPort.BytesToRead;
-                                byte[] data = new byte[count];
+                                LogFrame(name, "RX", packet,
+                                    "Discovery reply: " + DecodeReply(packet));
 
-                                int read = serialPort.Read(
-                                    data, 0, data.Length);
-
-                                for (int i = 0; i < read; i++)
-                                    rxBuffer.Add(data[i]);
-                            }
-
-                            while (TryExtractPacket(
-                                rxBuffer, out byte[] packet))
-                            {
-                                AddLog(name, "RX", packet,
-                                    "Discovery response");
-
-                                if (packet.SequenceEqual(
-                                    new byte[]
-                                    {
-                                        0x24, 0x49, 0x02, 0x33, 0x75
-                                    }))
+                                if (packet.SequenceEqual(IdentityReply))
                                 {
-                                    validId = true;
+                                    valid = true;
                                     break;
                                 }
                             }
 
-                            if (validId)
-                                break;
-
-                            // Wait without freezing the window.
-                            await Task.Delay(10);
+                            if (!valid)
+                                await Task.Delay(10);
                         }
 
-                        if (!validId)
+                        if (!valid)
                         {
-                            AddEvent(name + " is not the PIC");
-                            ClosePort();
+                            if (reportedPorts.Add(name))
+                                LogEvent(name + " is not the bridge");
+
+                            CloseAndDispose();
                             continue;
                         }
 
-                        // Correct PIC found.
-                        picFound = true;
-                        found = true;
+                        bridgeFound = true;
                         verifiedPort = name;
-                        waiting = false;
                         rxBuffer.Clear();
+                        nextIdentityCheck = DateTime.Now.AddSeconds(1);
 
-                        OperationComboBox.Items.Clear();
-                        OperationComboBox.Items.Add(name);
-                        OperationComboBox.SelectedIndex = 0;
+                        LogEvent(everConnected
+                            ? "Reconnected to the bridge on " + name
+                            : "Bridge connected on " + name);
 
-                        AddEvent("PIC verified on " + name);
-
-                        // Send the centered command only once
-                        // during this application's lifetime.
-                        if (!startupServoSent)
-                        {
-                            startupServoSent = true;
-                            SendServo(90);
-                        }
-
-                        nextTempTime =
-                            DateTime.Now.AddSeconds(1);
-
+                        everConnected = true;
                         break;
                     }
                     catch (Exception ex)
                     {
-                        AddEvent(name + " unavailable: " + ex.Message);
-                        ClosePort();
+                        if (reportedPorts.Add(name))
+                            LogEvent(name + " unavailable: " + ex.Message);
+
+                        CloseAndDispose();
                     }
                 }
 
-                if (!found)
-                {
-                    picFound = false;
-                    verifiedPort = "";
-                    AddressTextBox.Text = "--- °F";
-                    nextSearchTime =
-                        DateTime.Now.AddSeconds(1);
-                }
+                if (!bridgeFound)
+                    nextSearchTime = DateTime.Now.AddSeconds(1);
             }
             finally
             {
@@ -268,223 +236,477 @@ namespace SerialData
             }
         }
 
-        // SEND REQUESTS THAT EXPECT A REPLY
-        private void SendRequest(byte[] packet, string meaning)
+        // SEND ONE REQUEST AND WAIT FOR ITS REPLY
+        // Every part of the program that uses the link goes through here.
+        private async Task<(bool Sent, byte[]? Reply)> SendAndWaitAsync(
+            byte[] frame, string meaning, bool skipIfBusy = false)
         {
-            if (!picFound || !serialPort.IsOpen || waiting)
-                return;
+            if (skipIfBusy)
+            {
+                if (!await requestLock.WaitAsync(0))
+                    return (false, null);
+            }
+            else
+            {
+                await requestLock.WaitAsync();
+            }
 
             try
             {
-                serialPort.Write(packet, 0, packet.Length);
-
-                AddLog(verifiedPort, "TX", packet, meaning);
-
-                waiting = true;
-                replyDeadline =
-                    DateTime.Now.AddMilliseconds(500);
-            }
-            catch (Exception ex)
-            {
-                AddEvent("Send failed: " + ex.Message);
-                DisconnectPic();
-            }
-        }
-
-        // SERVO - not used in lab 10
-        private void SendServo(int degrees)
-        {
-            if (!picFound || !serialPort.IsOpen)
-                return;
-
-            degrees = Math.Max(0, Math.Min(180, degrees));
-
-            if (degrees == lastServoDegrees)
-                return;
-
-            // 0 degrees = 500 us
-            // 90 degrees = 1500 us
-            // 180 degrees = 2500 us
-            int pulseWidth = 500 +
-                (int)Math.Round(degrees * (2000.0 / 180.0));
-
-            int match = 0xB1E0 + pulseWidth;
-
-            byte[] packet =
-            {
-                0x24,
-                0x53,
-                0x02,
-                (byte)(match >> 8),
-                (byte)(match & 0xFF)
-            };
-
-            try
-            {
-                serialPort.Write(packet, 0, packet.Length);
-
-                AddLog(verifiedPort, "TX", packet,
-                    "Servo " + degrees + " degrees, " +
-                    pulseWidth + " us");
-
-                lastServoDegrees = degrees;
-            }
-            catch (Exception ex)
-            {
-                AddEvent("Servo send failed: " + ex.Message);
-                DisconnectPic();
-            }
-        }
-
-
-        // RECEIVE AND PROCESS SERIAL DATA
-        private void ReadSerialData()
-        {
-            try
-            {
-                while (serialPort.IsOpen &&
-                       serialPort.BytesToRead > 0)
+                if (!bridgeFound || serialPort == null || !serialPort.IsOpen)
                 {
-                    int count = serialPort.BytesToRead;
-                    byte[] data = new byte[count];
-
-                    int read = serialPort.Read(
-                        data, 0, data.Length);
-
-                    for (int i = 0; i < read; i++)
-                        rxBuffer.Add(data[i]);
+                    LogEvent("Not sent (bridge not connected): " + meaning);
+                    return (false, null);
                 }
 
-                while (TryExtractPacket(
-                    rxBuffer, out byte[] packet))
+                currentRequest = meaning;
+
+                // Log anything the bridge sent on its own (for example
+                // framing or overrun error packets).
+                LogUnsolicited();
+
+                serialPort.Write(frame, 0, frame.Length);
+                LogFrame(verifiedPort, "TX", frame, meaning);
+
+                byte expectedCommand = frame.Length >= 2 ? frame[1] : (byte)0;
+                DateTime deadline =
+                    DateTime.Now.AddMilliseconds(ReplyTimeoutMs);
+
+                while (DateTime.Now < deadline)
                 {
-                    string meaning = DecodePacket(packet);
+                    ReadAvailable();
 
-                    AddLog(verifiedPort, "RX", packet, meaning);
-
-                    if (waiting)
+                    while (TryExtractPacket(rxBuffer, out byte[] packet))
                     {
-                        waiting = false;
+                        bool isReply = packet.Length >= 2 &&
+                            (packet[1] == expectedCommand || packet[1] == 0x45);
+
+                        if (isReply)
+                        {
+                            LogFrame(verifiedPort, "RX", packet,
+                                DecodeReply(packet));
+                            return (true, packet);
+                        }
+
+                        LogFrame(verifiedPort, "RX", packet,
+                            "Ignored (not a reply to this request): " +
+                            DecodeReply(packet));
                     }
+
+                    await Task.Delay(5);
                 }
+
+                LogEvent(verifiedPort + " | TIMEOUT | no reply to: " + meaning);
+                return (true, null);
             }
             catch (Exception ex)
             {
-                AddEvent("Receive failed: " + ex.Message);
-                DisconnectPic();
+                LogEvent("Serial error during '" + meaning + "': " + ex.Message);
+                Disconnect("serial exception");
+                return (true, null);
+            }
+            finally
+            {
+                currentRequest = "";
+                requestLock.Release();
             }
         }
 
-        // Packet format: 24 COMMAND LENGTH PAYLOAD
+        private void ReadAvailable()
+        {
+            if (serialPort == null || !serialPort.IsOpen)
+                return;
 
-        private bool TryExtractPacket(
+            int count = serialPort.BytesToRead;
+
+            if (count <= 0)
+                return;
+
+            byte[] data = new byte[count];
+            int read = serialPort.Read(data, 0, count);
+
+            for (int i = 0; i < read; i++)
+                rxBuffer.Add(data[i]);
+        }
+
+        private void LogUnsolicited()
+        {
+            ReadAvailable();
+
+            while (TryExtractPacket(rxBuffer, out byte[] packet))
+            {
+                LogFrame(verifiedPort, "RX", packet,
+                    "Unsolicited: " + DecodeReply(packet));
+            }
+
+            rxBuffer.Clear();
+        }
+
+        // Packet format: 24 COMMAND LENGTH PAYLOAD (payload is at most 24 bytes)
+        private static bool TryExtractPacket(
             List<byte> buffer, out byte[] packet)
         {
             packet = Array.Empty<byte>();
 
-            // Discard noise until the start byte is found.
-            while (buffer.Count > 0 && buffer[0] != 0x24)
-                buffer.RemoveAt(0);
-
-            if (buffer.Count < 3)
-                return false;
-
-            int totalLength = 3 + buffer[2];
-
-            if (totalLength > 64)
+            while (true)
             {
-                buffer.RemoveAt(0);
+                while (buffer.Count > 0 && buffer[0] != 0x24)
+                    buffer.RemoveAt(0);
+
+                if (buffer.Count < 3)
+                    return false;
+
+                if (buffer[2] > 24)
+                {
+                    buffer.RemoveAt(0);
+                    continue;
+                }
+
+                int total = 3 + buffer[2];
+
+                if (buffer.Count < total)
+                    return false;
+
+                packet = buffer.GetRange(0, total).ToArray();
+                buffer.RemoveRange(0, total);
+                return true;
+            }
+        }
+
+        // DECODE REPLIES
+        private static string DecodeReply(byte[] packet)
+        {
+            if (packet.Length < 3 || packet.Length != 3 + packet[2])
+                return "Invalid packet";
+
+            byte command = packet[1];
+            int payloadLength = packet[2];
+
+            if (command == 0x45)
+            {
+                if (payloadLength != 2)
+                    return "Error packet with unexpected length";
+
+                byte category = packet[3];
+                byte detail = packet[4];
+
+                switch (category)
+                {
+                    case 0x01:
+                        return "ERROR: UART framing error (Lab 8)";
+                    case 0x02:
+                        return "ERROR: UART receive overrun (Lab 8)";
+                    case 0x04:
+                        return "ERROR: I2C - " + I2CErrorText(detail);
+                    case 0x05:
+                        return "ERROR: bridge request - " + BridgeErrorText(detail);
+                    default:
+                        return "ERROR: unknown category " + category.ToString("X2");
+                }
+            }
+
+            if (command == 0x49)
+            {
+                return (payloadLength == 2 && packet[3] == 0x33 && packet[4] == 0x75)
+                    ? "Identity OK (33 75)"
+                    : "Identity reply with unexpected payload";
+            }
+
+            if (command == 0x50)
+            {
+                return (payloadLength == 1 && packet[3] == 0x00)
+                    ? "Probe: device ACKed"
+                    : "Probe reply with unexpected payload";
+            }
+
+            if (command == 0x57)
+            {
+                return (payloadLength == 1 && packet[3] == 0x00)
+                    ? "Write OK (all bytes ACKed)"
+                    : "Write reply with unexpected payload";
+            }
+
+            if (command == 0x52)
+            {
+                if (payloadLength >= 2 && packet[3] == 0x00)
+                {
+                    byte[] data = packet.Skip(4).ToArray();
+                    return "Read OK, " + data.Length + " byte(s): " +
+                        BitConverter.ToString(data).Replace("-", " ");
+                }
+
+                return "Read reply with unexpected payload";
+            }
+
+            return "Unknown command " + command.ToString("X2");
+        }
+
+        private static string I2CErrorText(byte detail)
+        {
+            switch (detail)
+            {
+                case 0x01: return "NACK (address or data byte not acknowledged)";
+                case 0x02: return "timeout";
+                case 0x03: return "bus LOW / not idle";
+                case 0x04: return "SCL held LOW";
+                default: return "unknown detail " + detail.ToString("X2");
+            }
+        }
+
+        private static string BridgeErrorText(byte detail)
+        {
+            switch (detail)
+            {
+                case 0x01: return "invalid length or count";
+                case 0x02: return "unknown command";
+                case 0x03: return "invalid 7-bit address";
+                default: return "unknown detail " + detail.ToString("X2");
+            }
+        }
+
+        // TRANSMIT PANEL: build the frame from the inputs
+        private bool BuildFrame(
+            out byte[] frame, out string warnings, out string error)
+        {
+            frame = Array.Empty<byte>();
+            warnings = "";
+            error = "";
+
+            string operation =
+                OperationComboBox.SelectedItem?.ToString() ?? "";
+
+            if (operation == "Raw frame")
+            {
+                if (!TryParseHexBytes(RawFrameTextBox.Text, out byte[] raw))
+                {
+                    error = "Raw frame must be hex bytes, for example 24 49 00";
+                    return false;
+                }
+
+                if (raw.Length == 0)
+                {
+                    error = "Enter a raw frame";
+                    return false;
+                }
+
+                frame = raw;
+                return true;
+            }
+
+            if (operation == "Identity")
+            {
+                frame = new byte[] { 0x24, 0x49, 0x00 };
+                return true;
+            }
+
+            if (!TryParseHexBytes(AddressTextBox.Text, out byte[] addr) ||
+                addr.Length != 1)
+            {
+                error = "Address must be one hex byte, for example 20";
                 return false;
             }
 
-            if (buffer.Count < totalLength)
+            byte address = addr[0];
+            List<string> warn = new List<string>();
+
+            if (address < 0x08 || address > 0x77)
+                warn.Add("address is outside 08-77 (bridge should reject it)");
+
+            byte command;
+            List<byte> payload = new List<byte> { address };
+
+            if (operation == "Probe")
+            {
+                command = 0x50;
+            }
+            else if (operation == "Write")
+            {
+                command = 0x57;
+                byte[] data;
+
+                if (ModeComboBox.SelectedIndex == 1)
+                {
+                    data = Encoding.UTF8.GetBytes(DataTextBox.Text);
+                }
+                else if (!TryParseHexBytes(DataTextBox.Text, out data))
+                {
+                    error = "Write data must be hex bytes, for example 01 41";
+                    return false;
+                }
+
+                payload.AddRange(data);
+
+                if (data.Length == 0)
+                    warn.Add("no data bytes (bridge should reject an address-only write)");
+            }
+            else if (operation == "Read")
+            {
+                command = 0x52;
+                payload.Add((byte)CountNumeric.Value);
+
+                if (CountNumeric.Value == 0 || CountNumeric.Value > 23)
+                    warn.Add("read count outside 1-23 (bridge should reject it)");
+            }
+            else
+            {
+                error = "Choose an operation";
                 return false;
+            }
 
-            packet = buffer.GetRange(0, totalLength).ToArray();
-            buffer.RemoveRange(0, totalLength);
+            if (payload.Count > 255)
+            {
+                error = "A payload of " + payload.Count +
+                    " bytes cannot be represented in the one-byte length field";
+                return false;
+            }
 
+            if (payload.Count > 24)
+                warn.Add("payload is " + payload.Count +
+                    " bytes, the bridge maximum is 24 (bridge should reject it)");
+
+            List<byte> bytes = new List<byte> { 0x24, command, (byte)payload.Count };
+            bytes.AddRange(payload);
+
+            frame = bytes.ToArray();
+            warnings = string.Join("; ", warn);
             return true;
         }
 
-        private string DecodePacket(byte[] packet)
+        private static bool TryParseHexBytes(string text, out byte[] bytes)
         {
-            if (packet.Length < 3 ||
-                packet.Length != 3 + packet[2])
+            bytes = Array.Empty<byte>();
+            List<byte> list = new List<byte>();
+
+            string[] tokens = text.Split(
+                new[] { ' ', ',', ';', '\t', '\r', '\n' },
+                StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (string token in tokens)
             {
-                return "Invalid packet";
-            }
+                string t = token;
 
-            byte command = packet[1];
+                if (t.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+                    t = t.Substring(2);
 
-            // Device ID response.
-            if (command == 0x49)
-            {
-                return "PIC ID response";
-            }
-
-            // ADC / LM34 response: 24 41 03 00 HH LL
-            if (command == 0x41 && packet.Length == 6)
-            {
-                int channel = packet[3];
-
-                int adc =
-                    ((packet[4] & 0x03) << 8) | packet[5];
-
-                if (channel == 0)
+                if (t.Length == 0 || t.Length > 2 ||
+                    !byte.TryParse(t,
+                        System.Globalization.NumberStyles.HexNumber,
+                        null, out byte value))
                 {
-                    double volts = adc * VREF / 1024.0;
-                    double tempF = volts / 0.010;
-
-                    AddressTextBox.Text =
-                        tempF.ToString("F1") + " °F";
-
-                    return "ADC=" + adc +
-                        ", sensor=" + volts.ToString("F3") +
-                        " V, temperature=" + tempF.ToString("F1") +
-                        " °F";
+                    return false;
                 }
 
-                return "ADC channel " + channel;
+                list.Add(value);
             }
 
-            // PIC error response.
-            if (command == 0x45)
-            {
-                if (packet.Length >= 5)
-                {
-                    if (packet[3] == 1)
-                        return "Framing error";
-
-                    if (packet[3] == 2)
-                        return "Overrun error";
-
-                    if (packet[3] == 3)
-                        return "Servo range error";
-                }
-
-                return "PIC error response";
-            }
-
-            return "Unknown command";
+            bytes = list.ToArray();
+            return true;
         }
 
-        // ------------------------------------------------
-        // DISCONNECTION AND RECONNECTION
-        // ------------------------------------------------
-
-        private void DisconnectPic()
+        private void UpdatePreview()
         {
-            bool wasConnected = picFound;
+            string operation =
+                OperationComboBox.SelectedItem?.ToString() ?? "";
 
-            picFound = false;
-            waiting = false;
-            lastServoDegrees = -1;
+            bool raw = operation == "Raw frame";
+            bool identity = operation == "Identity";
+
+            AddressTextBox.Enabled = !raw && !identity;
+            ModeComboBox.Enabled = operation == "Write";
+            DataTextBox.Enabled = operation == "Write";
+            CountNumeric.Enabled = operation == "Read";
+            RawFrameTextBox.Enabled = raw;
+
+            if (BuildFrame(out byte[] frame, out string warnings, out string error))
+            {
+                string hex = BitConverter.ToString(frame).Replace("-", " ");
+                int payload = frame.Length >= 3 ? frame.Length - 3 : 0;
+
+                PreviewTextBox.Text = "TX: " + hex + "   (" + frame.Length +
+                    " bytes, payload " + payload + ")";
+
+                WarningLabel.Text =
+                    warnings == "" ? "" : "Warning: " + warnings;
+            }
+            else
+            {
+                PreviewTextBox.Text = "";
+                WarningLabel.Text = error;
+            }
+        }
+
+        private async void SendButton_Click(object? sender, EventArgs e)
+        {
+            await SendCurrentAsync("Manual");
+        }
+
+        // Builds a frame from the current controls and sends it.
+        private async Task SendCurrentAsync(string label)
+        {
+            if (!BuildFrame(out byte[] frame, out string warnings, out string error))
+            {
+                WarningLabel.Text = error;
+                LogEvent("Not sent: " + error);
+                return;
+            }
+
+            SendButton.Enabled = false;
+            ResendButton.Enabled = false;
+
+            try
+            {
+                string meaning = label + " " +
+                    (OperationComboBox.SelectedItem?.ToString() ?? "request");
+
+                if (warnings != "")
+                    meaning += " [" + warnings + "]";
+
+                // Deliberate boundary tests are sent as typed, never changed.
+                await SendAndWaitAsync(frame, meaning);
+            }
+            finally
+            {
+                UpdateStatus();
+            }
+        }
+
+        private void UpdateStatus()
+        {
+            StatusLabel.Text = bridgeFound
+                ? "Connected: " + verifiedPort
+                : "Disconnected - searching for the bridge...";
+
+            bool ready = bridgeFound && !scanning;
+            SendButton.Enabled = ready;
+            ResendButton.Enabled = ready;
+            ScanButton.Enabled = ready;
+        }
+
+        // DISCONNECT, STATUS, LOGGING
+        private void Disconnect(string reason)
+        {
+            bool wasConnected = bridgeFound;
+            string failed = currentRequest;
+            string port = verifiedPort;
+
+            bridgeFound = false;
             rxBuffer.Clear();
+            CloseAndDispose();
+            reportedPorts.Clear();
+            nextSearchTime = DateTime.Now.AddSeconds(1);
 
-            AddressTextBox.Text = "--- °F";
-            OperationComboBox.SelectedIndex = -1;
+            if (wasConnected)
+            {
+                LogEvent("Bridge disconnected on " + port + " (" + reason + ")" +
+                    (failed != "" ? ". Failed request: " + failed : ""));
+            }
+
+            verifiedPort = "";
             UpdateStatus();
+        }
 
+        private void CloseAndDispose()
+        {
             try
             {
                 if (serialPort != null)
@@ -493,148 +715,278 @@ namespace SerialData
                         serialPort.Close();
 
                     serialPort.Dispose();
-                    serialPort = null;
                 }
-            }
-            catch
-            {
-                serialPort = null;
-            }
-
-            nextSearchTime = DateTime.Now.AddSeconds(1);
-
-            if (wasConnected)
-                AddLog("PIC disconnected. Searching for device...");
-        }
-
-        private void ClosePort()
-        {
-            try
-            {
-                if (serialPort != null && serialPort.IsOpen)
-                    serialPort.Close();
             }
             catch
             {
                 // The adapter may already be unplugged.
             }
+
+            serialPort = null;
         }
 
-        private void UpdateStatus()
+        private void LogFrame(
+            string port, string direction, byte[] data, string decoded)
         {
-            if (picFound)
-                StatusLabel.Text = "Connected: " + verifiedPort;
-            else
-                StatusLabel.Text = "COM ERR";
+            string hex = BitConverter.ToString(data).Replace("-", " ");
+            int payloadLength = data.Length >= 3 ? data.Length - 3 : 0;
+
+            WriteLog(port + " | " + direction + " | " + hex +
+                " | payload=" + payloadLength + " | " + decoded);
         }
 
-        private void AddLog(string message)
+        private void LogEvent(string message)
         {
-            if (ComListBox.InvokeRequired)
+            WriteLog("EVENT | " + message);
+        }
+
+        private void WriteLog(string text)
+        {
+            string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") +
+                " | " + text;
+
+            ComListBox.Items.Add(line);
+
+            if (ComListBox.Items.Count > 3000)
+                ComListBox.Items.RemoveAt(0);
+
+            ComListBox.TopIndex = ComListBox.Items.Count - 1;
+
+            try
             {
-                ComListBox.BeginInvoke(new Action(() => AddLog(message)));
+                File.AppendAllText(logFilePath, line + Environment.NewLine);
+            }
+            catch
+            {
+                // Never let a log-file problem stop the program.
+            }
+        }
+
+        // ------------------------------------------------
+        // ADDRESS SCAN: all 128 values, reserved ones are not probed
+        // ------------------------------------------------
+        private async void ScanButton_Click(object? sender, EventArgs e)
+        {
+            if (!bridgeFound || scanning)
+                return;
+
+            scanning = true;
+            UpdateStatus();
+
+            ScanProgressBar.Minimum = 0;
+            ScanProgressBar.Maximum = 128;
+            ScanProgressBar.Value = 0;
+
+            int acked = 0;
+            int nacked = 0;
+            int failed = 0;
+            bool completed = true;
+
+            LogEvent("Address scan started (00-7F)");
+
+            try
+            {
+                for (int address = 0; address <= 0x7F; address++)
+                {
+                    string hex = address.ToString("X2");
+                    ScanStatusLabel.Text = "Scanning " + hex + " ...";
+
+                    // Reserved addresses are marked, but nothing is sent.
+                    if (address <= 0x07 || address >= 0x78)
+                    {
+                        LogEvent("Scan " + hex + ": Reserved (not probed)");
+                        ScanProgressBar.Value = address + 1;
+                        continue;
+                    }
+
+                    if (!bridgeFound)
+                    {
+                        completed = false;
+                        break;
+                    }
+
+                    byte[] frame = { 0x24, 0x50, 0x01, (byte)address };
+                    var result = await SendAndWaitAsync(frame, "Scan probe " + hex);
+
+                    if (!result.Sent)
+                    {
+                        completed = false;
+                        break;
+                    }
+
+                    byte[]? reply = result.Reply;
+                    string outcome;
+
+                    if (reply != null && reply.Length == 5 &&
+                        reply[1] == 0x50 && reply[3] == 0x00)
+                    {
+                        outcome = "ACK";
+                        acked++;
+                    }
+                    else if (reply != null && reply.Length == 5 &&
+                             reply[1] == 0x45 && reply[3] == 0x04 && reply[4] == 0x01)
+                    {
+                        outcome = "NACK";
+                        nacked++;
+                    }
+                    else
+                    {
+                        outcome = "communication error";
+                        failed++;
+                    }
+
+                    LogEvent("Scan " + hex + ": " + outcome);
+                    ScanProgressBar.Value = address + 1;
+                }
+            }
+            finally
+            {
+                scanning = false;
+                UpdateStatus();
+            }
+
+            string summary = (completed ? "Scan complete: " : "Scan stopped early: ") +
+                acked + " ACK, " + nacked + " NACK, " + failed + " error(s)";
+
+            ScanStatusLabel.Text = summary;
+            LogEvent(summary);
+        }
+
+        // ------------------------------------------------
+        // SAVED TRANSMISSIONS
+        // ------------------------------------------------
+        public class SavedCommand
+        {
+            public string Name { get; set; } = "";
+            public string Operation { get; set; } = "Identity";
+            public string Address { get; set; } = "";
+            public string Mode { get; set; } = "Hex";
+            public string Data { get; set; } = "";
+            public int Count { get; set; } = 0;
+            public string RawFrame { get; set; } = "";
+
+            public override string ToString()
+            {
+                return Name + "  [" + Operation + "]";
+            }
+        }
+
+        private SavedCommand CaptureCurrent(string name)
+        {
+            return new SavedCommand
+            {
+                Name = name,
+                Operation = OperationComboBox.SelectedItem?.ToString() ?? "Identity",
+                Address = AddressTextBox.Text,
+                Mode = ModeComboBox.SelectedItem?.ToString() ?? "Hex",
+                Data = DataTextBox.Text,
+                Count = (int)CountNumeric.Value,
+                RawFrame = RawFrameTextBox.Text
+            };
+        }
+
+        private void ApplyToControls(SavedCommand c)
+        {
+            int operation = OperationComboBox.Items.IndexOf(c.Operation);
+            OperationComboBox.SelectedIndex = operation >= 0 ? operation : 0;
+
+            AddressTextBox.Text = c.Address;
+
+            int mode = ModeComboBox.Items.IndexOf(c.Mode);
+            ModeComboBox.SelectedIndex = mode >= 0 ? mode : 0;
+
+            DataTextBox.Text = c.Data;
+            CountNumeric.Value = Math.Max(0, Math.Min(255, c.Count));
+            RawFrameTextBox.Text = c.RawFrame;
+            SaveNameTextBox.Text = c.Name;
+        }
+
+        private void LoadSaved()
+        {
+            try
+            {
+                if (File.Exists(savedFilePath))
+                {
+                    string json = File.ReadAllText(savedFilePath);
+                    List<SavedCommand>? list =
+                        JsonSerializer.Deserialize<List<SavedCommand>>(json);
+
+                    if (list != null)
+                        savedCommands = list;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogEvent("Could not load saved commands: " + ex.Message);
+            }
+
+            RefreshSavedList("");
+        }
+
+        private void SaveToDisk()
+        {
+            try
+            {
+                File.WriteAllText(savedFilePath, JsonSerializer.Serialize(
+                    savedCommands, new JsonSerializerOptions { WriteIndented = true }));
+            }
+            catch (Exception ex)
+            {
+                LogEvent("Could not save commands: " + ex.Message);
+            }
+        }
+
+        private void RefreshSavedList(string selectName)
+        {
+
+        }
+
+        // Save adds a new command, or updates it if the name already exists.
+        private void SaveButton_Click(object? sender, EventArgs e)
+        {
+            string name = SaveNameTextBox.Text.Trim();
+
+            if (name == "")
+            {
+                WarningLabel.Text = "Enter a name to save this command";
                 return;
             }
 
-            ComListBox.Items.Add(
-                DateTime.Now.ToString("HH:mm:ss") + " " + message);
+            SavedCommand command = CaptureCurrent(name);
 
-            // Keep the newest message visible.
-            if (ComListBox.Items.Count > 0)
-                ComListBox.TopIndex = ComListBox.Items.Count - 1;
-        }
-        // ------------------------------------------------
-        // LOGGING
-        // ------------------------------------------------
+            int index = savedCommands.FindIndex(c =>
+                string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
 
-        private void AddLog(
-            string portName, string direction,
-            byte[] data, string meaning)
-        {
-            string hex = BitConverter.ToString(data)
-                .Replace("-", " ");
+            if (index >= 0)
+            {
+                savedCommands[index] = command;
+                LogEvent("Saved command updated: " + name);
+            }
+            else
+            {
+                savedCommands.Add(command);
+                LogEvent("Saved command added: " + name);
+            }
 
-            AddEvent(portName + " | " + direction +
-                " | " + hex + " | " + meaning);
+            SaveToDisk();
+            RefreshSavedList(name);
         }
 
-        private void AddEvent(string message)
+        // BUTTONS AND SHUTDOWN
+        private void ExitButton_Click(object? sender, EventArgs e)
         {
-            ComListBox.Items.Add(
-                DateTime.Now.ToString("HH:mm:ss.fff") +
-                " | " + message);
-
-            if (ComListBox.Items.Count > 0)
-                ComListBox.TopIndex = ComListBox.Items.Count - 1;
+            this.Close();
         }
 
-        // ------------------------------------------------
-        // YOUR EXISTING BUTTONS
-        // ------------------------------------------------
-
-        private void ExitButton_Click(object sender, EventArgs e)
+        private void ComListBox_SelectedIndexChanged(object? sender, EventArgs e)
         {
-            StatusTimer.Stop();
-            ClosePort();
-            Close();
-        }
-
-        private void ReadButton_Click(object sender, EventArgs e)
-        {
-            SendRequest(
-                new byte[] { 0x24, 0x41, 0x01, 0x00 },
-                "Manual ADC request");
-        }
-
-        private void ADCButton_Click(object sender, EventArgs e)
-        {
-            SendRequest(
-                new byte[] { 0x24, 0x41, 0x01, 0x00 },
-                "Manual ADC request");
-        }
-
-        private void SendButton_Click(object sender, EventArgs e)
-        {
-            SendRequest(
-                new byte[] { 0x24, 0x49, 0x00 },
-                "Manual ID request");
-        }
-
-
-        private void ServoScrollBar_Scroll(
-            object sender, ScrollEventArgs e)
-        {
-            //int degrees = ServoScrollBar.Value;
-
-            //Text = "Serial Data - Servo: " + degrees + "°";
-
-            //SendServo(degrees);
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
             StatusTimer.Stop();
-            ClosePort();
-
-            if (serialPort != null)
-            {
-                serialPort.Dispose();
-                serialPort = null;
-            }
-
+            CloseAndDispose();
             base.OnFormClosed(e);
-        }
-
-        private void Servo1TrackBar_ValueChanged(object? sender, EventArgs e)
-        {
-            //int degrees = Servo1TrackBar.Value;
-            //Text = "Serial Data - Servo: " + degrees + "°";
-            //SendServo(degrees);
-        }
-
-        private void ComListBox_SelectedIndexChanged(object sender, EventArgs e)
-        {
-
         }
     }
 }

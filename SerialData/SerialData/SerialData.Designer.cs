@@ -43,14 +43,12 @@
             RawFrameTextBox = new TextBox();
             PreviewTextBox = new TextBox();
             WarningLabel = new Label();
-            SavedListBox = new ListBox();
             SaveNameTextBox = new TextBox();
             SaveButton = new Button();
             DeleteButton = new Button();
             ResendButton = new Button();
             ScanButton = new Button();
             ScanProgressBar = new ProgressBar();
-            ScanResultsListBox = new ListBox();
             ScanStatusLabel = new Label();
             StatusStrip.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)CountNumeric).BeginInit();
@@ -71,14 +69,14 @@
             OperationComboBox.FormattingEnabled = true;
             OperationComboBox.Location = new Point(12, 12);
             OperationComboBox.Name = "OperationComboBox";
-            OperationComboBox.Size = new Size(182, 33);
+            OperationComboBox.Size = new Size(248, 33);
             OperationComboBox.TabIndex = 4;
             // 
             // AddressTextBox
             // 
             AddressTextBox.Location = new Point(12, 90);
             AddressTextBox.Name = "AddressTextBox";
-            AddressTextBox.Size = new Size(182, 31);
+            AddressTextBox.Size = new Size(248, 31);
             AddressTextBox.TabIndex = 5;
             // 
             // StatusStrip
@@ -105,15 +103,15 @@
             // ComListBox
             // 
             ComListBox.FormattingEnabled = true;
-            ComListBox.Location = new Point(200, 12);
+            ComListBox.Location = new Point(266, 12);
             ComListBox.Name = "ComListBox";
-            ComListBox.Size = new Size(685, 104);
+            ComListBox.Size = new Size(619, 229);
             ComListBox.TabIndex = 7;
             ComListBox.SelectedIndexChanged += ComListBox_SelectedIndexChanged;
             // 
             // SendButton
             // 
-            SendButton.Location = new Point(12, 201);
+            SendButton.Location = new Point(172, 373);
             SendButton.Name = "SendButton";
             SendButton.Size = new Size(152, 36);
             SendButton.TabIndex = 9;
@@ -126,19 +124,19 @@
             ModeComboBox.FormattingEnabled = true;
             ModeComboBox.Location = new Point(12, 51);
             ModeComboBox.Name = "ModeComboBox";
-            ModeComboBox.Size = new Size(182, 33);
+            ModeComboBox.Size = new Size(248, 33);
             ModeComboBox.TabIndex = 10;
             // 
             // DataTextBox
             // 
             DataTextBox.Location = new Point(12, 127);
             DataTextBox.Name = "DataTextBox";
-            DataTextBox.Size = new Size(182, 31);
+            DataTextBox.Size = new Size(248, 31);
             DataTextBox.TabIndex = 11;
             // 
             // CountNumeric
             // 
-            CountNumeric.Location = new Point(14, 164);
+            CountNumeric.Location = new Point(172, 337);
             CountNumeric.Maximum = new decimal(new int[] { 255, 0, 0, 0 });
             CountNumeric.Name = "CountNumeric";
             CountNumeric.Size = new Size(180, 31);
@@ -146,42 +144,34 @@
             // 
             // RawFrameTextBox
             // 
-            RawFrameTextBox.Location = new Point(172, 336);
+            RawFrameTextBox.Location = new Point(12, 164);
             RawFrameTextBox.Name = "RawFrameTextBox";
-            RawFrameTextBox.Size = new Size(150, 31);
+            RawFrameTextBox.Size = new Size(248, 31);
             RawFrameTextBox.TabIndex = 13;
             // 
             // PreviewTextBox
             // 
-            PreviewTextBox.Location = new Point(200, 251);
+            PreviewTextBox.Location = new Point(266, 251);
             PreviewTextBox.Multiline = true;
             PreviewTextBox.Name = "PreviewTextBox";
             PreviewTextBox.ReadOnly = true;
-            PreviewTextBox.Size = new Size(685, 31);
+            PreviewTextBox.Size = new Size(619, 31);
             PreviewTextBox.TabIndex = 14;
             // 
             // WarningLabel
             // 
             WarningLabel.AutoSize = true;
-            WarningLabel.Location = new Point(421, 342);
+            WarningLabel.Location = new Point(378, 323);
             WarningLabel.Name = "WarningLabel";
             WarningLabel.Size = new Size(59, 25);
             WarningLabel.TabIndex = 15;
             WarningLabel.Text = "label1";
             // 
-            // SavedListBox
-            // 
-            SavedListBox.FormattingEnabled = true;
-            SavedListBox.Location = new Point(200, 127);
-            SavedListBox.Name = "SavedListBox";
-            SavedListBox.Size = new Size(685, 54);
-            SavedListBox.TabIndex = 16;
-            // 
             // SaveNameTextBox
             // 
-            SaveNameTextBox.Location = new Point(172, 381);
+            SaveNameTextBox.Location = new Point(14, 201);
             SaveNameTextBox.Name = "SaveNameTextBox";
-            SaveNameTextBox.Size = new Size(150, 31);
+            SaveNameTextBox.Size = new Size(246, 31);
             SaveNameTextBox.TabIndex = 17;
             // 
             // SaveButton
@@ -224,21 +214,13 @@
             // 
             ScanProgressBar.Location = new Point(172, 293);
             ScanProgressBar.Name = "ScanProgressBar";
-            ScanProgressBar.Size = new Size(150, 34);
+            ScanProgressBar.Size = new Size(200, 34);
             ScanProgressBar.TabIndex = 22;
-            // 
-            // ScanResultsListBox
-            // 
-            ScanResultsListBox.FormattingEnabled = true;
-            ScanResultsListBox.Location = new Point(200, 191);
-            ScanResultsListBox.Name = "ScanResultsListBox";
-            ScanResultsListBox.Size = new Size(685, 54);
-            ScanResultsListBox.TabIndex = 23;
             // 
             // ScanStatusLabel
             // 
             ScanStatusLabel.AutoSize = true;
-            ScanStatusLabel.Location = new Point(421, 302);
+            ScanStatusLabel.Location = new Point(378, 288);
             ScanStatusLabel.Name = "ScanStatusLabel";
             ScanStatusLabel.Size = new Size(59, 25);
             ScanStatusLabel.TabIndex = 24;
@@ -250,14 +232,12 @@
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(897, 450);
             Controls.Add(ScanStatusLabel);
-            Controls.Add(ScanResultsListBox);
             Controls.Add(ScanProgressBar);
             Controls.Add(ScanButton);
             Controls.Add(ResendButton);
             Controls.Add(DeleteButton);
             Controls.Add(SaveButton);
             Controls.Add(SaveNameTextBox);
-            Controls.Add(SavedListBox);
             Controls.Add(WarningLabel);
             Controls.Add(PreviewTextBox);
             Controls.Add(RawFrameTextBox);
@@ -295,14 +275,12 @@
         private TextBox RawFrameTextBox;
         private TextBox PreviewTextBox;
         private Label WarningLabel;
-        private ListBox SavedListBox;
         private TextBox SaveNameTextBox;
         private Button SaveButton;
         private Button DeleteButton;
         private Button ResendButton;
         private Button ScanButton;
         private ProgressBar ScanProgressBar;
-        private ListBox ScanResultsListBox;
         private Label ScanStatusLabel;
     }
 }
